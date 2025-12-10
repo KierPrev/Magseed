@@ -186,10 +186,43 @@ def redimensionar_para_ver(imagen, alto_maximo):
         return cv2.resize(imagen, (nuevo_ancho, nuevo_alto), interpolation=cv2.INTER_AREA)
     return imagen
 
+def dibujar_info_overlay(img, cant_semillas, cant_radiculas, nombre_archivo):
+    """
+    Agrega texto GRANDE y adaptable al tamaño de la imagen.
+    """
+    img_out = img.copy()
+    h, w = img.shape[:2]
+    
+    # --- ESCALADO DINÁMICO ---
+    # Si la imagen tiene 4000px de alto, el scale será aprox 4.0 (muy grande)
+    # Si la imagen tiene 800px de alto, el scale será aprox 1.5 (normal)
+    scale = max(1.5, h / 800.0) 
+    
+    # Grosor proporcional al tamaño
+    thickness = int(scale * 2.5)
+    
+    lineas = [
+        f"Archivo: {nombre_archivo}",
+        f"Semillas: {cant_semillas}",
+        f"Radiculas: {cant_radiculas}"
+    ]
+    
+    # Posición inicial y espaciado
+    x = int(30 * scale)
+    y = int(50 * scale)
+    line_height = int(50 * scale) # Espacio entre líneas
+    
+    for linea in lineas:
+        # 1. Dibujar borde negro (Sombra para contraste)
+        cv2.putText(img_out, linea, (x, y), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), thickness + 4)
+        # 2. Dibujar texto amarillo brillante
+        cv2.putText(img_out, linea, (x, y), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 255, 255), thickness)
+        
+        y += line_height
+
+    return img_out
+
 def seleccionar_carpetas(directorio_raiz):
-    """
-    Busca carpetas con formato YY-MM-DD
-    """
     if not os.path.exists(directorio_raiz):
         print(f"Error: No existe el directorio {directorio_raiz}")
         return []
@@ -197,9 +230,7 @@ def seleccionar_carpetas(directorio_raiz):
     todas_las_carpetas = [d for d in os.listdir(directorio_raiz) 
                           if os.path.isdir(os.path.join(directorio_raiz, d))]
     
-    # --- CAMBIO AQUÍ: Formato YY-MM-DD (\d{2}) ---
     patron_fecha = re.compile(r'^\s*\d{2}-\d{2}-\d{2}\s*$')
-    # -----------------------------------------------
 
     carpetas_fechas = [d for d in todas_las_carpetas if patron_fecha.match(d)]
     carpetas_fechas.sort()
@@ -285,6 +316,20 @@ def main():
             res = procesar_imagen(ruta_completa)
             
             if res:
+                # --- NUEVO: Agregar Overlay ---
+                cant_semillas = len(res['lista_semillas'])
+                cant_radiculas = len(res['lista_radiculas'])
+                
+                # Dibujamos sobre la imagen de debug
+                if res['img_debug'] is not None:
+                    res['img_debug'] = dibujar_info_overlay(
+                        res['img_debug'], 
+                        cant_semillas, 
+                        cant_radiculas, 
+                        archivo
+                    )
+
+                # --- Visualización ---
                 if MOSTRAR_EN_PANTALLA and res['img_debug'] is not None:
                     img_ver = redimensionar_para_ver(res['img_debug'], ALTO_MAXIMO_PANTALLA)
                     cv2.imshow(f"Analizando: {archivo}", img_ver)
