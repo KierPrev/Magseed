@@ -301,7 +301,7 @@ def main():
         print(f"\nGuardando CSV detallado en: {ARCHIVO_SALIDA}...")
         df.to_csv(ARCHIVO_SALIDA, index=False, sep=',', encoding='utf-8')
         
-        print(f"✅ ¡Listo! Se exportaron {len(df)} registros (semillas + radículas).")
+        print(f"¡Listo! Se exportaron {len(df)} registros (semillas + radículas).")
         print(df.head(10)) # Muestra las primeras 10 líneas para verificar
     else:
         print("No se encontraron datos.")
