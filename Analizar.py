@@ -10,12 +10,12 @@ import glob
 
 # 1. Rutas
 DIRECTORIO_RAIZ = './Experimentos' 
-ARCHIVO_SALIDA = 'resultados_detallados_raw.csv' # <--- Nombre actualizado
+ARCHIVO_SALIDA = 'resultados_detallados_raw.csv' 
 
 # 2. Calibración
 PIXELES_POR_CM = 1.0  
 
-# 3. Umbrales de Color (HSV) - Mantengo tus valores
+# 3. Umbrales de Color (HSV)
 RADICULA_MIN_HSV = np.array([30, 0, 0])    
 RADICULA_MAX_HSV = np.array([60, 255, 225]) 
 
@@ -30,24 +30,61 @@ AREA_MIN_SEMILLA = 800
 AREA_MAX_SEMILLA = 50000
 
 # 5. Filtro de Adyacencia
-# Distancia para conectar piezas rotas (efecto dominó)
 DISTANCIA_MAX_UNION = 20 
 
-# 6. Visualización
+# 6. Visualización y Recorte
 MOSTRAR_EN_PANTALLA = True 
 ALTO_MAXIMO_PANTALLA = 800 
 GUARDAR_IMAGENES_TESTIGO = True
 CARPETA_TESTIGOS = './procesadas_debug'
 
+# CONFIGURACIÓN DE RECORTE AUTOMÁTICO
+# Brillo mínimo para considerar algo como "borde blanco" (0-255).
+# 200 suele funcionar bien para cajas de luz blancas.
+UMBRAL_BLANCO = 190 
+MARGEN_SEGURIDAD = 30 # Píxeles extra para no cortar muy pegado al papel
+
 # ==========================================
 # FIN DEL PANEL DE CONTROL
 # ==========================================
 
+def recortar_bordes_blancos(img):
+    """
+    Detecta la zona oscura (papel madera) y elimina los bordes blancos sobrantes.
+    """
+    if img is None:
+        return None
+
+    h_img, w_img = img.shape[:2]
+
+    # 1. Convertir a escala de grises
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # 2. Aplicar umbral: Todo lo muy claro se vuelve negro, lo oscuro se vuelve blanco
+    # (THRESH_BINARY_INV invierte: claro->0, oscuro->255)
+    _, thresh = cv2.threshold(gray, UMBRAL_BLANCO, 255, cv2.THRESH_BINARY_INV)
+
+    # 3. Encontrar todos los puntos que NO son el fondo blanco
+    puntos = cv2.findNonZero(thresh)
+
+    if puntos is not None:
+        # 4. Calcular el rectángulo que encierra esos puntos
+        x, y, w, h = cv2.boundingRect(puntos)
+
+        # 5. Aplicar un margen de seguridad (para no cortar justo en el borde del papel)
+        x = max(0, x - MARGEN_SEGURIDAD)
+        y = max(0, y - MARGEN_SEGURIDAD)
+        w = min(w_img - x, w + (MARGEN_SEGURIDAD * 2))
+        h = min(h_img - y, h + (MARGEN_SEGURIDAD * 2))
+
+        # 6. Recortar
+        img_recortada = img[y:y+h, x:x+w]
+        return img_recortada
+    
+    # Si no encontró nada oscuro, devuelve la imagen original
+    return img
+
 def obtener_largo_esqueleto(img_binaria_radicula):
-    """
-    Reduce la forma de la raíz a una línea de 1 pixel (esqueleto)
-    y cuenta los píxeles.
-    """
     size = np.size(img_binaria_radicula)
     skel = np.zeros(img_binaria_radicula.shape, np.uint8)
     
@@ -73,6 +110,11 @@ def procesar_imagen(ruta_imagen):
     img = cv2.imread(ruta_imagen)
     if img is None:
         return None
+
+    # --- NUEVO: RECORTE AUTOMÁTICO ---
+    # Esto elimina los bordes blancos antes de analizar nada
+    img = recortar_bordes_blancos(img)
+    # ---------------------------------
 
     h, w = img.shape[:2]
     
@@ -116,36 +158,29 @@ def procesar_imagen(ruta_imagen):
     # 2. PREPARACIÓN DE OBJETOS
     # ============================================================
     
-    # Listas para guardar DATOS CRUDOS de esta imagen
     detalles_semillas = []
     detalles_radiculas = []
     
-    # A. Máscara acumulada de cosas válidas (Empieza con las semillas)
     mask_acumulada_validos = np.zeros((h, w), dtype=np.uint8)
     
     # Procesar SEMILLAS primero
     for i, cnt in enumerate(cnt_sem):
         area = cv2.contourArea(cnt)
         if AREA_MIN_SEMILLA < area < AREA_MAX_SEMILLA:
-            # Guardamos dato crudo
             detalles_semillas.append({
                 'id': i,
                 'area_px': area
             })
-            
-            # Dibujar semilla en la máscara de validación
             cv2.drawContours(mask_acumulada_validos, [cnt], -1, 255, -1)
             cv2.drawContours(img_debug, [cnt], -1, (255, 0, 0), 2) # Azul
 
     # B. Lista de candidatas (Raíces filtradas por área)
     candidatos_radiculas = []
-    
     kernel_dilatacion = np.ones((DISTANCIA_MAX_UNION, DISTANCIA_MAX_UNION), np.uint8)
 
     for i, cnt in enumerate(cnt_rad):
         area = cv2.contourArea(cnt)
         if AREA_MIN_RADICULA < area < AREA_MAX_RADICULA:
-            # Pre-calcular máscara individual
             mask_single = np.zeros((h, w), dtype=np.uint8)
             cv2.drawContours(mask_single, [cnt], -1, 255, -1)
             mask_dilated = cv2.dilate(mask_single, kernel_dilatacion, iterations=1)
@@ -178,21 +213,15 @@ def procesar_imagen(ruta_imagen):
     
     for item in candidatos_radiculas:
         if item['valid']:
-            # Calcular largo exacto
             largo_px = obtener_largo_esqueleto(item['mask'])
-            
             detalles_radiculas.append({
                 'id': item['id'],
                 'largo_cm': largo_px / PIXELES_POR_CM
             })
-            
-            # Dibujo VERDE
             cv2.drawContours(img_debug, [item['cnt']], -1, (0, 255, 0), 2)
         else:
-            # Ruido ROJO
             cv2.drawContours(img_debug, [item['cnt']], -1, (0, 0, 255), 1)
 
-    # Retornamos el diccionario con listas detalladas + la imagen
     return {
         'lista_semillas': detalles_semillas,
         'lista_radiculas': detalles_radiculas,
@@ -211,13 +240,12 @@ def redimensionar_para_ver(imagen, alto_maximo):
 def main():
     global MOSTRAR_EN_PANTALLA
     
-    print(f"Iniciando análisis detallado en: {DIRECTORIO_RAIZ}")
+    print(f"Iniciando análisis CON RECORTE AUTOMÁTICO en: {DIRECTORIO_RAIZ}")
     print("Controles: [ESPACIO] Siguiente | [ESC] Salir")
     
     if GUARDAR_IMAGENES_TESTIGO and not os.path.exists(CARPETA_TESTIGOS):
         os.makedirs(CARPETA_TESTIGOS)
 
-    # Lista plana para guardar todas las filas del CSV
     filas_csv = []
 
     for root, dirs, files in os.walk(DIRECTORIO_RAIZ):
@@ -245,7 +273,6 @@ def main():
             res = procesar_imagen(ruta_completa)
             
             if res:
-                # --- VISUALIZACIÓN ---
                 if MOSTRAR_EN_PANTALLA and res['img_debug'] is not None:
                     img_ver = redimensionar_para_ver(res['img_debug'], ALTO_MAXIMO_PANTALLA)
                     cv2.imshow("Verde=Conectada | Azul=Semilla", img_ver)
@@ -254,14 +281,10 @@ def main():
                         MOSTRAR_EN_PANTALLA = False
                         cv2.destroyAllWindows()
 
-                # --- GUARDADO IMAGEN ---
                 if GUARDAR_IMAGENES_TESTIGO and res['img_debug'] is not None:
                     nombre_testigo = f"{nombre_carpeta}_{archivo}"
                     cv2.imwrite(os.path.join(CARPETA_TESTIGOS, nombre_testigo), res['img_debug'])
                 
-                # --- GUARDADO DATOS CRUDOS ---
-                
-                # 1. Filas de RADÍCULAS
                 for rad in res['lista_radiculas']:
                     filas_csv.append({
                         'Fecha': nombre_carpeta,
@@ -274,7 +297,6 @@ def main():
                         'Medida_Tipo': 'Largo_cm'
                     })
                 
-                # 2. Filas de SEMILLAS
                 for sem in res['lista_semillas']:
                     filas_csv.append({
                         'Fecha': nombre_carpeta,
@@ -292,17 +314,13 @@ def main():
 
     if filas_csv:
         df = pd.DataFrame(filas_csv)
-        
-        # Ordenamos bonito para que sea fácil de leer
         try:
             df = df.sort_values(by=['Fecha', 'Grupo', 'Replica', 'Tipo_Objeto'])
         except: pass
         
         print(f"\nGuardando CSV detallado en: {ARCHIVO_SALIDA}...")
         df.to_csv(ARCHIVO_SALIDA, index=False, sep=',', encoding='utf-8')
-        
-        print(f"¡Listo! Se exportaron {len(df)} registros (semillas + radículas).")
-        print(df.head(10)) # Muestra las primeras 10 líneas para verificar
+        print(df.head(10)) 
     else:
         print("No se encontraron datos.")
 
