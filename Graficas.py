@@ -2,150 +2,163 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-from scipy import stats
-from matplotlib.widgets import Button # <--- Importamos el botón
+from matplotlib.widgets import Slider
 
 # ==========================================
-# 📊 PANEL DE CONTROL
+# ⚙️ CONFIGURACIÓN
 # ==========================================
-ARCHIVO_DATOS = 'resultados_detallados_raw.csv' 
+ARCHIVO_DATOS = 'resultados_limpios.csv' 
 COLOR_CONTROL = '#3498db' 
 COLOR_TRATADO = '#e74c3c' 
 
-OBJETO = 'Radicula' 
-NIVEL_CONFIANZA = 0.05 
+# --- AJUSTA ESTOS DOS VALORES ---
+OBJETO_A_GRAFICAR = 'Radicula'   
+TIPO_MEDIDA = 'Largo_cm'         # 'Area_cm2' o 'Largo_cm'
 
 # ==========================================
-# 1. CARGA DE DATOS
+# 1. CARGA Y LIMPIEZA
 # ==========================================
 try:
     df = pd.read_csv(ARCHIVO_DATOS)
 except FileNotFoundError:
-    print("⚠️ No se encontró el archivo. Usando datos de prueba.")
-    np.random.seed(42)
-    data = {
-        'Grupo': ['Control']*50 + ['Magnetico']*50,
-        'Tipo_Objeto': ['Radicula']*100,
-        'Medida_Valor': np.concatenate([np.random.normal(100, 15, 50), np.random.normal(115, 18, 50)]),
-        'Medida_Tipo': ['Largo_cm']*100
-    }
-    df = pd.DataFrame(data)
-
-df_subset = df[df['Tipo_Objeto'] == OBJETO].copy()
-datos_control = df_subset[df_subset['Grupo'] == 'Control']['Medida_Valor']
-datos_mag = df_subset[df_subset['Grupo'] == 'Magnetico']['Medida_Valor']
+    print(f"[ERROR] No encuentro el archivo: {ARCHIVO_DATOS}")
+    df = pd.DataFrame()
 
 # ==========================================
-# 2. CÁLCULOS ESTADÍSTICOS (Backend)
-# ==========================================
-# Normalidad
-_, p_norm_c = stats.shapiro(datos_control)
-_, p_norm_m = stats.shapiro(datos_mag)
-es_normal = (p_norm_c > 0.05) and (p_norm_m > 0.05)
-
-# Test de Hipótesis
-if es_normal:
-    test_nombre = "T-Test (Student)"
-    stat, p_value = stats.ttest_ind(datos_control, datos_mag, equal_var=False) 
-else:
-    test_nombre = "Mann-Whitney U"
-    stat, p_value = stats.mannwhitneyu(datos_control, datos_mag)
-
-# Tamaño del Efecto
-mean_c, mean_m = datos_control.mean(), datos_mag.mean()
-std_c, std_m = datos_control.std(), datos_mag.std()
-n_c, n_m = len(datos_control), len(datos_mag)
-
-if (n_c + n_m - 2) > 0:
-    pooled_std = np.sqrt(((n_c - 1) * std_c**2 + (n_m - 1) * std_m**2) / (n_c + n_m - 2))
-    cohen_d = (mean_m - mean_c) / pooled_std
-else:
-    cohen_d = 0
-
-# Interpretación
-significativo = p_value < NIVEL_CONFIANZA
-resultado_texto = "SIGNIFICATIVA" if significativo else "NO SIGNIFICATIVA"
-estrellas = "***" if p_value < 0.001 else "**" if p_value < 0.01 else "*" if p_value < 0.05 else "ns"
-
-# ==========================================
-# 3. VISUALIZACIÓN GRÁFICA
-# ==========================================
-sns.set_theme(style="whitegrid", context="notebook")
-fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-
-# --- BOXPLOT ---
-sns.boxplot(data=df_subset, x='Grupo', y='Medida_Valor', 
-            palette={'Control': COLOR_CONTROL, 'Magnetico': COLOR_TRATADO},
-            showfliers=False, ax=axes[0], width=0.5)
-sns.stripplot(data=df_subset, x='Grupo', y='Medida_Valor', 
-              color='black', alpha=0.3, size=3, ax=axes[0])
-
-# Línea de significancia visual
-y_max = df_subset['Medida_Valor'].max()
-h = y_max * 0.05
-axes[0].plot([0, 0, 1, 1], [y_max+h, y_max+2*h, y_max+2*h, y_max+h], lw=1.5, c='k')
-axes[0].text(0.5, y_max + 2.5*h, f"{estrellas}\n(p={p_value:.3f})", 
-             ha='center', va='bottom', color='k', fontsize=12, fontweight='bold')
-
-axes[0].set_title(f'Comparación: {OBJETO}', fontsize=14)
-axes[0].set_ylabel(f'Medida ({df_subset["Medida_Tipo"].iloc[0]})')
-axes[0].set_ylim(top=y_max + 4*h)
-
-# --- HISTOGRAMA ---
-sns.histplot(data=df_subset, x='Medida_Valor', hue='Grupo', 
-             palette={'Control': COLOR_CONTROL, 'Magnetico': COLOR_TRATADO},
-             kde=True, element="step", stat="density", common_norm=False, ax=axes[1])
-
-axes[1].axvline(mean_c, color=COLOR_CONTROL, linestyle='--', label=f'Media C: {mean_c:.1f}')
-axes[1].axvline(mean_m, color=COLOR_TRATADO, linestyle='--', label=f'Media M: {mean_m:.1f}')
-axes[1].legend()
-axes[1].set_title(f'Distribución de {OBJETO}s', fontsize=14)
-
-# Ajustamos espacio abajo para poner el botón
-plt.subplots_adjust(bottom=0.2) 
-
-# ==========================================
-# 4. BOTÓN Y POPUP (NUEVO CÓDIGO)
+# 2. COMPROBACIÓN Y PREPARACIÓN
 # ==========================================
 
-# Función que se ejecuta al hacer clic
-def mostrar_popup(event):
-    # Crear una nueva figura pequeña (simulando un popup)
-    fig_pop = plt.figure(figsize=(5, 4), facecolor='#f0f0f0')
-    fig_pop.canvas.manager.set_window_title('Reporte Estadístico Detallado')
+columnas_necesarias = ['Grupo', 'Tipo_Objeto', 'Medida_Tipo', 'Medida_Valor', 'Replica']
+if not df.empty and all(col in df.columns for col in columnas_necesarias):
     
-    # Texto del reporte
-    stats_text = (
-        f"📋 REPORTE ESTADÍSTICO\n"
-        f"========================\n\n"
-        f"• Objeto: {OBJETO}\n"
-        f"• Test: {test_nombre}\n"
-        f"• Resultado: {resultado_texto}\n"
-        f"  (p-value = {p_value:.5f})\n\n"
-        f"• Tamaño del Efecto:\n"
-        f"  Cohen's d = {cohen_d:.3f}\n\n"
-        f"------------------------\n"
-        f"🔹 CONTROL:\n"
-        f"   N = {n_c}\n"
-        f"   Media = {mean_c:.2f} ± {std_c:.2f}\n\n"
-        f"🔸 TRATAMIENTO:\n"
-        f"   N = {n_m}\n"
-        f"   Media = {mean_m:.2f} ± {std_m:.2f}"
+    # 2.1. Limpieza de texto
+    cols_texto = ['Grupo', 'Tipo_Objeto', 'Medida_Tipo']
+    for col in cols_texto:
+        df[col] = df[col].astype(str).str.strip()
+    
+    # 2.2. Conversión de Medida_Valor
+    df['Medida_Valor'] = pd.to_numeric(
+        df['Medida_Valor'].astype(str).str.replace(',', '.'), 
+        errors='coerce'
     )
-    
-    # Escribir el texto en la nueva ventana
-    plt.text(0.05, 0.95, stats_text, fontsize=11, family='monospace',
-             transform=fig_pop.transFigure, va='top')
-    
-    # Quitar ejes para que parezca un cuadro de texto limpio
-    plt.axis('off')
-    plt.show()
 
-# Crear el área del botón en la figura principal [x, y, ancho, alto]
-ax_boton = plt.axes([0.4, 0.05, 0.2, 0.075]) 
+    df['ID_Muestra'] = df['Grupo'].astype(str).str.strip() + " " + df['Replica'].astype(str)
 
-# Crear el botón
-boton_stats = Button(ax_boton, 'Ver Estadística', color='white', hovercolor='#e0e0e0')
-boton_stats.on_clicked(mostrar_popup)
+    # 2.3. Filtrado
+    df_subset = df[
+        (df['Tipo_Objeto'] == OBJETO_A_GRAFICAR) & 
+        (df['Medida_Tipo'] == TIPO_MEDIDA)
+    ].copy()
 
-plt.show()
+    df_subset = df_subset.dropna(subset=['Medida_Valor'])
+
+    if df_subset.empty:
+        print(f"[ALERTA] No hay datos para graficar '{OBJETO_A_GRAFICAR}' con medida '{TIPO_MEDIDA}'.")
+    else:
+        
+        # 2.4. Configuración estética general
+        df_subset.sort_values(by=['Grupo', 'Replica'], inplace=True)
+        
+        sns.set_theme(style="whitegrid", context="notebook")
+        max_valor_datos = df_subset['Medida_Valor'].max()
+        limite_inicial = max_valor_datos * 1.30
+        offset_text = max_valor_datos * 0.05 
+        fmt = "{:.5f}" if "Area" in TIPO_MEDIDA else "{:.2f}"
+        unidad = "(cm2)" if "Area" in TIPO_MEDIDA else "(cm)"
+        paleta_colores = {'Control': COLOR_CONTROL, 'Magnetico': COLOR_TRATADO}
+
+
+        # ==========================================
+        # 🖥️ VENTANA 1: DETALLADO (POR RÉPLICA)
+        # ==========================================
+        fig1, ax1 = plt.subplots(figsize=(10, 7))
+        fig1.canvas.manager.set_window_title('Ventana 1: Detalle por Réplica')
+        plt.subplots_adjust(bottom=0.25)
+
+        sns.boxplot(data=df_subset, x='ID_Muestra', y='Medida_Valor', hue='Grupo',             
+                    palette=paleta_colores, showfliers=False, dodge=False, width=0.6, ax=ax1)
+
+        sns.stripplot(data=df_subset, x='ID_Muestra', y='Medida_Valor', 
+                      color='black', alpha=0.3, size=4, ax=ax1)
+
+        ax1.set_title(f'Detalle por Réplica: {OBJETO_A_GRAFICAR}', fontsize=14)
+        ax1.set_ylabel(f'{TIPO_MEDIDA} {unidad}')
+        ax1.set_xlabel('Réplica Individual')
+        ax1.tick_params(axis='x', rotation=45)
+        ax1.set_ylim(0, limite_inicial)
+
+        # Etiquetas Ventana 1
+        stats1 = df_subset.groupby('ID_Muestra')['Medida_Valor'].agg(['mean', 'max']).reset_index()
+        x_positions = {label.get_text(): i for i, label in enumerate(ax1.get_xticklabels())}
+        
+        for i, row in stats1.iterrows():
+            id_muestra = row['ID_Muestra']
+            if id_muestra in x_positions:
+                y_pos_text = row['max'] * 1.05 + offset_text 
+                
+                ax1.text(x_positions[id_muestra], y_pos_text, 
+                        f"Media:\n{fmt.format(row['mean'])}", ha='center', va='bottom', 
+                        fontsize=8, fontweight='bold', color='#333333')
+        
+        # --- SLIDER VENTANA 1 ---
+        ax_slider1 = fig1.add_axes([0.15, 0.1, 0.65, 0.03], facecolor='lightgray')
+        slider1 = Slider(ax_slider1, 'Zoom Y ', max_valor_datos * 0.1, max_valor_datos * 3.0, valinit=limite_inicial)
+        
+        def update1_simple(val):
+             ax1.set_ylim(0, val)
+             fig1.canvas.draw_idle()
+             
+        slider1.on_changed(update1_simple)
+
+
+        # ==========================================
+        # 🖥️ VENTANA 2: COMPARACIÓN GLOBAL
+        # ==========================================
+        fig2, ax2 = plt.subplots(figsize=(6, 7))
+        fig2.canvas.manager.set_window_title('Ventana 2: Comparación Global')
+        plt.subplots_adjust(bottom=0.25)
+
+        # Boxplot Global
+        sns.boxplot(data=df_subset, x='Grupo', y='Medida_Valor', 
+                    palette=paleta_colores, showfliers=False, width=0.5, ax=ax2)
+
+        sns.stripplot(data=df_subset, x='Grupo', y='Medida_Valor', 
+                      color='black', alpha=0.3, size=4, ax=ax2)
+
+        ax2.set_title(f'COMPARACIÓN FINAL\n{OBJETO_A_GRAFICAR} (Pool de datos)', fontsize=14, fontweight='bold')
+        ax2.set_ylabel(f'{TIPO_MEDIDA} {unidad}')
+        ax2.set_xlabel('Condición Experimental')
+        ax2.set_ylim(0, limite_inicial)
+
+        # Etiquetas Ventana 2 (Media)
+        stats2 = df_subset.groupby('Grupo')['Medida_Valor'].agg(mean='mean', ymax='max').reset_index()
+        grupos_ordenados = [label.get_text() for label in ax2.get_xticklabels()]
+        
+        for i, grupo in enumerate(grupos_ordenados):
+            row = stats2[stats2['Grupo'] == grupo]
+            if not row.empty:
+                val_mean = row.iloc[0]['mean']
+                val_max = row.iloc[0]['ymax']
+                y_pos_text = val_max * 1.05 + offset_text 
+                
+                ax2.text(i, y_pos_text, f"Media: {fmt.format(val_mean)}", 
+                         ha='center', va='bottom', fontsize=10, fontweight='bold', color='black')
+
+        # --- SLIDER VENTANA 2 ---
+        ax_slider2 = fig2.add_axes([0.15, 0.1, 0.65, 0.03], facecolor='lightgray')
+        slider2 = Slider(ax_slider2, 'Zoom Y ', max_valor_datos * 0.1, max_valor_datos * 3.0, valinit=limite_inicial)
+        
+        def update2_simple(val):
+            ax2.set_ylim(0, val)
+            fig2.canvas.draw_idle()
+            
+        slider2.on_changed(update2_simple)
+
+        print("\n[OK] Generadas 2 ventanas interactivas.")
+        plt.show()
+
+else:
+    if not df.empty:
+        print("[ERROR] El CSV no contiene todas las columnas necesarias (Grupo, Tipo_Objeto, Medida_Tipo, Medida_Valor, Replica).")
+    else:
+        print("No se cargó el archivo o el DataFrame está vacío.")

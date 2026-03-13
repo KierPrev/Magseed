@@ -3,383 +3,389 @@ import numpy as np
 import pandas as pd
 import os
 import glob
-import re
+import json
+from skimage.morphology import skeletonize
 
 # ==========================================
-# PANEL DE CONTROL
+# CONFIGURACIÓN GENERAL
 # ==========================================
-
-# 1. Rutas
 DIRECTORIO_RAIZ = './Experimentos' 
-ARCHIVO_SALIDA = 'resultados_detallados_raw.csv' 
-
-# 2. Calibración
-PIXELES_POR_CM = 1.0  
-
-# 3. Umbrales de Color (HSV)
-RADICULA_MIN_HSV = np.array([30, 0, 0])    
-RADICULA_MAX_HSV = np.array([60, 255, 225]) 
-
-SEMILLA_MIN_HSV = np.array([0, 0, 53])
-SEMILLA_MAX_HSV = np.array([15, 255, 255])
-
-# 4. Filtros de Tamaño (ÁREA)
-AREA_MIN_RADICULA = 200     
-AREA_MAX_RADICULA = 50000   
-
-AREA_MIN_SEMILLA = 800
-AREA_MAX_SEMILLA = 50000
-
-# 5. Filtro de Adyacencia
-DISTANCIA_MAX_UNION = 20 
-
-# 6. Visualización y Recorte
-MOSTRAR_EN_PANTALLA = True 
-ALTO_MAXIMO_PANTALLA = 800 
+ARCHIVO_SALIDA = 'resultados_detallados_calibrados.csv' 
+ARCHIVO_CONFIG = 'parametros_calibracion.json' 
 GUARDAR_IMAGENES_TESTIGO = True
-CARPETA_TESTIGOS = './procesadas_debug'
+CARPETA_TESTIGOS = './procesadas_debug' 
 
-# CONFIGURACIÓN DE RECORTE AUTOMÁTICO
-UMBRAL_BLANCO = 190 
-MARGEN_SEGURIDAD = 30 
+# CORRECCIÓN IMPORTANTE: 11.09 mm = 1.109 cm
+LARGO_REAL_REFERENCIA_CM = 11.09 
+
+# Valores por defecto
+PARAMS = {
+    'blur_k': 5,          
+    'seed_thresh': 5,     
+    'clean_k': 1,         # Default bajo
+    'seed_glue': 7,       
+    'root_bridge': 3,     
+    'min_area_root': 30,  # Default bajo para raíces pequeñas
+    'hsv_h_min': 15,      
+    'hsv_h_max': 40       
+}
 
 # ==========================================
-# FIN DEL PANEL DE CONTROL
+# GESTIÓN DE CONFIGURACIÓN
+# ==========================================
+
+def cargar_configuracion():
+    global PARAMS
+    if os.path.exists(ARCHIVO_CONFIG):
+        try:
+            with open(ARCHIVO_CONFIG, 'r') as f:
+                datos = json.load(f)
+                for k, v in datos.items():
+                    if k in PARAMS:
+                        PARAMS[k] = v
+            print(f"\n[INFO] Configuración cargada desde '{ARCHIVO_CONFIG}'")
+        except Exception as e:
+            print(f"\n[ALERTA] Error leyendo config: {e}")
+    else:
+        print("\n[INFO] Usando valores por defecto.")
+
+def guardar_configuracion():
+    try:
+        with open(ARCHIVO_CONFIG, 'w') as f:
+            json.dump(PARAMS, f, indent=4)
+        print(f"[INFO] Configuración guardada en '{ARCHIVO_CONFIG}'")
+    except Exception as e:
+        print(f"[ERROR] No se pudo guardar config: {e}")
+
+# ==========================================
+# FUNCIONES AUXILIARES
 # ==========================================
 
 def recortar_bordes_blancos(img):
-    if img is None:
-        return None
-
+    if img is None: return None
     h_img, w_img = img.shape[:2]
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, UMBRAL_BLANCO, 255, cv2.THRESH_BINARY_INV)
+    _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
     puntos = cv2.findNonZero(thresh)
-
     if puntos is not None:
         x, y, w, h = cv2.boundingRect(puntos)
-        x = max(0, x - MARGEN_SEGURIDAD)
-        y = max(0, y - MARGEN_SEGURIDAD)
-        w = min(w_img - x, w + (MARGEN_SEGURIDAD * 2))
-        h = min(h_img - y, h + (MARGEN_SEGURIDAD * 2))
+        margen = 30
+        x = max(0, x - margen)
+        y = max(0, y - margen)
+        w = min(w_img - x, w + (margen * 2))
+        h = min(h_img - y, h + (margen * 2))
         return img[y:y+h, x:x+w]
-    
     return img
 
 def obtener_largo_esqueleto(img_binaria_radicula):
-    size = np.size(img_binaria_radicula)
-    skel = np.zeros(img_binaria_radicula.shape, np.uint8)
+    bool_image = img_binaria_radicula > 0
+    skeleton = skeletonize(bool_image)
+    return np.count_nonzero(skeleton)
+
+def detectar_referencia(hsv, img_debug, params):
+    amarillo_min = np.array([params['hsv_h_min'], 80, 80])
+    amarillo_max = np.array([params['hsv_h_max'], 255, 255])
+    mask_ref_color = cv2.inRange(hsv, amarillo_min, amarillo_max)
     
-    element = cv2.getStructuringElement(cv2.MORPH_CROSS, (3,3))
-    img_copy = img_binaria_radicula.copy()
+    mask_ref_color = cv2.morphologyEx(mask_ref_color, cv2.MORPH_OPEN, np.ones((3,3), np.uint8))
+    mask_ref_color = cv2.morphologyEx(mask_ref_color, cv2.MORPH_CLOSE, np.ones((5,5), np.uint8))
     
-    done = False
-    while not done:
-        eroded = cv2.erode(img_copy, element)
-        temp = cv2.dilate(eroded, element)
-        temp = cv2.subtract(img_copy, temp)
-        skel = cv2.bitwise_or(skel, temp)
-        img_copy = eroded.copy()
-        
-        zeros = size - cv2.countNonZero(img_copy)
-        if zeros == size:
-            done = True
+    cnts_ref, _ = cv2.findContours(mask_ref_color, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    mejor_ref = None
+    max_area_ref = 0
+    
+    for c in cnts_ref:
+        area = cv2.contourArea(c)
+        if area > 500: 
+            rect = cv2.minAreaRect(c)
+            (center), (w_rect, h_rect), angle = rect
+            largo = max(w_rect, h_rect)
+            ancho = min(w_rect, h_rect)
+            if ancho > 0:
+                aspect_ratio = largo / ancho
+                if aspect_ratio > 2.5: 
+                    if area > max_area_ref:
+                        max_area_ref = area
+                        mejor_ref = c
+    
+    if mejor_ref is not None:
+        rect = cv2.minAreaRect(mejor_ref)
+        box = np.int64(cv2.boxPoints(rect))
+        cv2.drawContours(img_debug, [box], 0, (255, 255, 0), 3) 
+        largo_px = max(rect[1])
+        if largo_px > 0:
+            return largo_px / LARGO_REAL_REFERENCIA_CM, True
             
-    largo_pixeles = cv2.countNonZero(skel)
-    return largo_pixeles
+    return 1.0, False
 
-def procesar_imagen(ruta_imagen):
-    img = cv2.imread(ruta_imagen)
-    if img is None:
-        return None
-
-    img = recortar_bordes_blancos(img)
-
-    h, w = img.shape[:2]
-    img_blur = cv2.GaussianBlur(img, (5, 5), 0)
-
-    # 1. DETECCIÓN
-    lab = cv2.cvtColor(img_blur, cv2.COLOR_BGR2LAB)
-    l_channel, a_channel, b_channel = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-    
-    # Semillas
-    a_clahe = clahe.apply(a_channel)
-    _, mask_sem = cv2.threshold(a_clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    kernel_sem = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
-    mask_sem = cv2.morphologyEx(mask_sem, cv2.MORPH_CLOSE, kernel_sem, iterations=3)
-    mask_sem = cv2.morphologyEx(mask_sem, cv2.MORPH_OPEN, kernel_sem, iterations=1)
-
-    # Radículas
-    l_clahe = clahe.apply(l_channel)
-    mask_rad = cv2.adaptiveThreshold(l_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                     cv2.THRESH_BINARY, 21, -5)
-    kernel_rad = np.ones((3,3), np.uint8)
-    mask_rad = cv2.morphologyEx(mask_rad, cv2.MORPH_OPEN, kernel_rad, iterations=1)
-    mask_rad = cv2.subtract(mask_rad, mask_sem)
-
-    cnt_rad, _ = cv2.findContours(mask_rad, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnt_sem, _ = cv2.findContours(mask_sem, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
+def procesar_imagen(img_original, params):
+    img = img_original.copy()
     img_debug = img.copy()
+    h_img, w_img = img.shape[:2]
+    
+    # 1. Suavizado
+    k_blur = params['blur_k'] if params['blur_k'] % 2 == 1 else params['blur_k'] + 1
+    if k_blur < 1: k_blur = 1
+    img_blur = cv2.GaussianBlur(img, (k_blur, k_blur), 0)
+    
+    # 2. Silueta Total
+    b, g, r = cv2.split(img_blur)
+    _, mask_total = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    k_clean = params['clean_k']
+    if k_clean > 0:
+        mask_total = cv2.morphologyEx(mask_total, cv2.MORPH_OPEN, np.ones((k_clean, k_clean), np.uint8))
 
-    # 2. PREPARACIÓN DE OBJETOS
+    # 3. Semillas
+    diff_r_g = cv2.subtract(r, g)
+    _, mask_semillas_raw = cv2.threshold(diff_r_g, params['seed_thresh'], 255, cv2.THRESH_BINARY)
+    
+    k_glue = params['seed_glue'] if params['seed_glue'] % 2 == 1 else params['seed_glue'] + 1
+    if k_glue < 1: k_glue = 1
+    kernel_strong = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_glue, k_glue))
+    mask_semillas_closed = cv2.morphologyEx(mask_semillas_raw, cv2.MORPH_CLOSE, kernel_strong, iterations=2)
+    
+    cnts_fill, _ = cv2.findContours(mask_semillas_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    mask_semillas = np.zeros_like(mask_semillas_raw)
+    for c in cnts_fill:
+        if cv2.contourArea(c) > 50:
+            cv2.drawContours(mask_semillas, [c], -1, 255, -1)
+            
+    mask_semillas = cv2.morphologyEx(mask_semillas, cv2.MORPH_OPEN, np.ones((3,3), np.uint8))
+    mask_semillas = cv2.bitwise_and(mask_total, mask_semillas)
+
+    # 4. Raíces
+    mask_radiculas = cv2.subtract(mask_total, mask_semillas)
+    
+    k_bridge = params['root_bridge'] if params['root_bridge'] % 2 == 1 else params['root_bridge'] + 1
+    if k_bridge > 1:
+        kernel_connect = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_bridge, k_bridge))
+        mask_radiculas = cv2.morphologyEx(mask_radiculas, cv2.MORPH_CLOSE, kernel_connect)
+    
+    if k_clean > 0:
+        mask_radiculas = cv2.morphologyEx(mask_radiculas, cv2.MORPH_OPEN, np.ones((k_clean, k_clean), np.uint8))
+
+    # 5. Calibración
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    px_por_cm, ref_encontrada = detectar_referencia(hsv, img_debug, params)
+    
+    # Texto de escala
+    if ref_encontrada:
+         cv2.putText(img_debug, f"Scale: {px_por_cm:.1f} px/cm", (20, h_img-20), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2)
+    else:
+         cv2.putText(img_debug, "NO REF", (20, h_img-20), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
+
     detalles_semillas = []
     detalles_radiculas = []
-    mask_acumulada_validos = np.zeros((h, w), dtype=np.uint8)
     
-    for i, cnt in enumerate(cnt_sem):
+    # Procesar Semillas
+    cnts_sem, _ = cv2.findContours(mask_semillas, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for i, cnt in enumerate(cnts_sem):
         area = cv2.contourArea(cnt)
-        if AREA_MIN_SEMILLA < area < AREA_MAX_SEMILLA:
-            detalles_semillas.append({'id': i, 'area_px': area})
-            cv2.drawContours(mask_acumulada_validos, [cnt], -1, 255, -1)
-            cv2.drawContours(img_debug, [cnt], -1, (255, 0, 0), 2)
+        if area > 100: 
+            x, y, w, h = cv2.boundingRect(cnt)
+            aspect = float(w)/h if h > 0 else 0
+            if 0.3 < aspect < 4.0:
+                detalles_semillas.append({'id': i, 'area_px': area})
+                cv2.drawContours(img_debug, [cnt], -1, (255, 0, 0), -1) 
 
-    candidatos_radiculas = []
-    kernel_dilatacion = np.ones((DISTANCIA_MAX_UNION, DISTANCIA_MAX_UNION), np.uint8)
-
-    for i, cnt in enumerate(cnt_rad):
+    # Procesar Raíces
+    cnts_rad, _ = cv2.findContours(mask_radiculas, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for i, cnt in enumerate(cnts_rad):
         area = cv2.contourArea(cnt)
-        if AREA_MIN_RADICULA < area < AREA_MAX_RADICULA:
-            mask_single = np.zeros((h, w), dtype=np.uint8)
-            cv2.drawContours(mask_single, [cnt], -1, 255, -1)
-            mask_dilated = cv2.dilate(mask_single, kernel_dilatacion, iterations=1)
+        if area > params['min_area_root']: 
+            hull = cv2.convexHull(cnt)
+            hull_area = cv2.contourArea(hull)
+            if hull_area == 0: continue
             
-            candidatos_radiculas.append({
-                'id': i, 'cnt': cnt, 'mask': mask_single,
-                'mask_dilated': mask_dilated, 'valid': False 
+            solidez = float(area) / hull_area 
+            x, y, w, h = cv2.boundingRect(cnt)
+            aspect = float(w)/h if h > 0 else 0
+            
+            if solidez > 0.6: continue 
+            if (aspect > 8.0 or aspect < 0.12): continue
+
+            mask_single = np.zeros((h_img, w_img), dtype=np.uint8)
+            cv2.drawContours(mask_single, [cnt], -1, 255, -1)
+            largo_px = obtener_largo_esqueleto(mask_single)
+            
+            detalles_radiculas.append({
+                'id': i, 'largo_cm': largo_px / px_por_cm, 'area_px': area
             })
+            cv2.drawContours(img_debug, [cnt], -1, (0, 255, 0), 2)
 
-    # 3. LÓGICA DE PROPAGACIÓN
-    hubo_cambios = True
-    while hubo_cambios:
-        hubo_cambios = False
-        for item in candidatos_radiculas:
-            if not item['valid']:
-                interseccion = cv2.bitwise_and(item['mask_dilated'], mask_acumulada_validos)
-                if cv2.countNonZero(interseccion) > 0:
-                    item['valid'] = True
-                    hubo_cambios = True
-                    cv2.bitwise_or(mask_acumulada_validos, item['mask'], mask_acumulada_validos)
-
-    # 4. EXTRACCIÓN
-    for item in candidatos_radiculas:
-        if item['valid']:
-            largo_px = obtener_largo_esqueleto(item['mask'])
-            detalles_radiculas.append({'id': item['id'], 'largo_cm': largo_px / PIXELES_POR_CM})
-            cv2.drawContours(img_debug, [item['cnt']], -1, (0, 255, 0), 2)
-        else:
-            cv2.drawContours(img_debug, [item['cnt']], -1, (0, 0, 255), 1)
+    # ========================================================
+    #  VISUALIZACIÓN DE ESTADÍSTICAS EN TIEMPO REAL (UPDATE)
+    # ========================================================
+    largos_encontrados = [r['largo_cm'] for r in detalles_radiculas]
+    
+    if largos_encontrados:
+        val_min = min(largos_encontrados)
+        val_max = max(largos_encontrados)
+        cant = len(largos_encontrados)
+        
+        # Texto en Cyan (Azul+Verde)
+        texto_stats = f"Raices: {cant} | Min: {val_min:.2f} cm | Max: {val_max:.2f} cm"
+        cv2.putText(img_debug, texto_stats, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+    else:
+        cv2.putText(img_debug, "Sin Raices", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
     return {
         'lista_semillas': detalles_semillas,
         'lista_radiculas': detalles_radiculas,
-        'img_debug': img_debug
+        'img_debug': img_debug,
+        'px_por_cm': px_por_cm 
     }
 
+# ==========================================
+# PANEL DE CONTROL (GUI)
+# ==========================================
+
+def nothing(x): pass
+
+def abrir_panel_calibracion(ruta_primera_imagen):
+    print("\n--- MODO CALIBRACIÓN ---")
+    print("Ajusta los sliders. Presiona 'Q' para GUARDAR y procesar todo.")
+    
+    img_raw = cv2.imread(ruta_primera_imagen)
+    if img_raw is None: return 
+    
+    img_crop = recortar_bordes_blancos(img_raw)
+    
+    h, w = img_crop.shape[:2]
+    factor = 1.0
+    if h > 900: 
+        factor = 900 / h
+        img_crop = cv2.resize(img_crop, (0,0), fx=factor, fy=factor)
+
+    win_name = "Panel de Calibracion"
+    cv2.namedWindow(win_name)
+    
+    # Trackbars
+    cv2.createTrackbar('Suavizado (Blur)', win_name, PARAMS['blur_k'], 15, nothing)
+    cv2.createTrackbar('Umbral Semilla', win_name, PARAMS['seed_thresh'], 50, nothing)
+    cv2.createTrackbar('Limpieza Ruido', win_name, PARAMS['clean_k'], 10, nothing)
+    cv2.createTrackbar('Pegamento Semilla', win_name, PARAMS['seed_glue'], 20, nothing)
+    cv2.createTrackbar('Puente Raices', win_name, PARAMS['root_bridge'], 10, nothing)
+    cv2.createTrackbar('Area Min Raiz', win_name, PARAMS['min_area_root'], 200, nothing)
+    cv2.createTrackbar('Ref Amarillo Min', win_name, PARAMS['hsv_h_min'], 179, nothing)
+    
+    while True:
+        # Leer valores
+        PARAMS['blur_k'] = cv2.getTrackbarPos('Suavizado (Blur)', win_name)
+        PARAMS['seed_thresh'] = cv2.getTrackbarPos('Umbral Semilla', win_name)
+        PARAMS['clean_k'] = cv2.getTrackbarPos('Limpieza Ruido', win_name)
+        PARAMS['seed_glue'] = cv2.getTrackbarPos('Pegamento Semilla', win_name)
+        PARAMS['root_bridge'] = cv2.getTrackbarPos('Puente Raices', win_name)
+        PARAMS['min_area_root'] = cv2.getTrackbarPos('Area Min Raiz', win_name)
+        PARAMS['hsv_h_min'] = cv2.getTrackbarPos('Ref Amarillo Min', win_name)
+        
+        res = procesar_imagen(img_crop, PARAMS)
+        cv2.imshow(win_name, res['img_debug'])
+        
+        key = cv2.waitKey(50) & 0xFF
+        if key == ord('q'):
+            break
+            
+    cv2.destroyAllWindows()
+    guardar_configuracion()
+    print("\n[OK] Procesando lote completo con los nuevos parámetros...")
+
+# ==========================================
+# MAIN
+# ==========================================
+
 def redimensionar_para_ver(imagen, alto_maximo):
-    alto_original, ancho_original = imagen.shape[:2]
-    if alto_original > alto_maximo:
-        ratio = alto_maximo / float(alto_original)
-        nuevo_ancho = int(ancho_original * ratio)
-        nuevo_alto = int(alto_original * ratio)
-        return cv2.resize(imagen, (nuevo_ancho, nuevo_alto), interpolation=cv2.INTER_AREA)
+    h, w = imagen.shape[:2]
+    if h > alto_maximo:
+        ratio = alto_maximo / float(h)
+        return cv2.resize(imagen, (int(w*ratio), int(h*ratio)))
     return imagen
 
-def dibujar_info_overlay(img, cant_semillas, cant_radiculas, nombre_archivo):
-    """
-    Agrega texto GRANDE y adaptable al tamaño de la imagen.
-    """
-    img_out = img.copy()
-    h, w = img.shape[:2]
-    
-    # --- ESCALADO DINÁMICO ---
-    # Si la imagen tiene 4000px de alto, el scale será aprox 4.0 (muy grande)
-    # Si la imagen tiene 800px de alto, el scale será aprox 1.5 (normal)
-    scale = max(1.5, h / 800.0) 
-    
-    # Grosor proporcional al tamaño
-    thickness = int(scale * 2.5)
-    
-    lineas = [
-        f"Archivo: {nombre_archivo}",
-        f"Semillas: {cant_semillas}",
-        f"Radiculas: {cant_radiculas}"
-    ]
-    
-    # Posición inicial y espaciado
-    x = int(30 * scale)
-    y = int(50 * scale)
-    line_height = int(50 * scale) # Espacio entre líneas
-    
-    for linea in lineas:
-        # 1. Dibujar borde negro (Sombra para contraste)
-        cv2.putText(img_out, linea, (x, y), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), thickness + 4)
-        # 2. Dibujar texto amarillo brillante
-        cv2.putText(img_out, linea, (x, y), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 255, 255), thickness)
-        
-        y += line_height
-
-    return img_out
-
 def seleccionar_carpetas(directorio_raiz):
-    if not os.path.exists(directorio_raiz):
-        print(f"Error: No existe el directorio {directorio_raiz}")
-        return []
-
-    todas_las_carpetas = [d for d in os.listdir(directorio_raiz) 
-                          if os.path.isdir(os.path.join(directorio_raiz, d))]
-    
-    patron_fecha = re.compile(r'^\s*\d{2}-\d{2}-\d{2}\s*$')
-
-    carpetas_fechas = [d for d in todas_las_carpetas if patron_fecha.match(d)]
-    carpetas_fechas.sort()
-
-    if not carpetas_fechas:
-        print("No se encontraron carpetas con formato YY-MM-DD (ej: 25-11-12).")
-        print(f"Carpetas encontradas: {todas_las_carpetas}")
-        return []
-
-    print("\n=== FECHAS DISPONIBLES ===")
-    for idx, nombre in enumerate(carpetas_fechas):
-        print(f"[{idx+1}] {nombre}")
-    print("==========================")
-    print("Escribe los números separados por coma (ej: 1,3) o 'todas'.")
-    
-    seleccion = input("\nTu elección: ").strip().lower()
-
-    carpetas_elegidas = []
-
-    if seleccion == 'todas' or seleccion == '':
-        carpetas_elegidas = carpetas_fechas
-        print(">> Seleccionado: TODAS.")
-    else:
-        try:
-            indices = [int(x.strip()) - 1 for x in seleccion.split(',')]
-            for i in indices:
-                if 0 <= i < len(carpetas_fechas):
-                    carpetas_elegidas.append(carpetas_fechas[i])
-            print(f">> Seleccionado: {len(carpetas_elegidas)} carpeta(s).")
-        except ValueError:
-            print("Entrada no válida.")
-            return []
-            
-    return carpetas_elegidas
+    if not os.path.exists(directorio_raiz): return []
+    todas = sorted([d for d in os.listdir(directorio_raiz) if os.path.isdir(os.path.join(directorio_raiz, d))])
+    if not todas: return []
+    print("\nCarpetas encontradas:")
+    for i, n in enumerate(todas): print(f"[{i+1}] {n}")
+    sel = input("\nElige números (separados por coma) o ENTER para todas: ")
+    if not sel.strip(): return todas
+    try:
+        idxs = [int(x)-1 for x in sel.split(',')]
+        return [todas[i] for i in idxs if 0 <= i < len(todas)]
+    except: return []
 
 def main():
-    global MOSTRAR_EN_PANTALLA
-    
-    carpetas_a_procesar = seleccionar_carpetas(DIRECTORIO_RAIZ)
-    
-    if not carpetas_a_procesar:
-        return
+    cargar_configuracion()
 
-    print(f"\nIniciando análisis en {len(carpetas_a_procesar)} carpeta(s)...")
-    print("Controles: [ESPACIO] Siguiente | [ESC] Salir")
+    carpetas = seleccionar_carpetas(DIRECTORIO_RAIZ)
+    if not carpetas: return
     
-    if GUARDAR_IMAGENES_TESTIGO and not os.path.exists(CARPETA_TESTIGOS):
-        os.makedirs(CARPETA_TESTIGOS)
+    if not os.path.exists(CARPETA_TESTIGOS): os.makedirs(CARPETA_TESTIGOS)
+    
+    imagen_ejemplo = None
+    for carpeta in carpetas:
+        ruta_carpeta = os.path.join(DIRECTORIO_RAIZ, carpeta)
+        archivos = sorted(glob.glob(os.path.join(ruta_carpeta, "*.jpg")))
+        if archivos:
+            imagen_ejemplo = archivos[0]
+            break
+    
+    if imagen_ejemplo:
+        abrir_panel_calibracion(imagen_ejemplo)
+    else:
+        print("No se encontraron imágenes para calibrar.")
 
     filas_csv = []
-
-    for nombre_carpeta in carpetas_a_procesar:
-        ruta_carpeta = os.path.join(DIRECTORIO_RAIZ, nombre_carpeta)
+    
+    for carpeta in carpetas:
+        ruta_carpeta = os.path.join(DIRECTORIO_RAIZ, carpeta)
+        archivos = sorted(glob.glob(os.path.join(ruta_carpeta, "*.jpg")))
         
-        patrones = ['*.jpg', '*.jpeg', '*.png']
-        archivos_en_carpeta = []
-        for patron in patrones:
-            archivos_en_carpeta.extend(glob.glob(os.path.join(ruta_carpeta, patron)))
-            archivos_en_carpeta.extend(glob.glob(os.path.join(ruta_carpeta, patron.upper())))
+        print(f"\nProcesando {carpeta} ({len(archivos)} imágenes)...")
         
-        archivos_en_carpeta = sorted(list(set(archivos_en_carpeta)))
-
-        print(f"\n---> Entrando en: {nombre_carpeta} ({len(archivos_en_carpeta)} imágenes)")
-
-        for ruta_completa in archivos_en_carpeta:
-            archivo = os.path.basename(ruta_completa)
+        for ruta_img in archivos:
+            nombre_archivo = os.path.basename(ruta_img)
+            nombre_clean = os.path.splitext(nombre_archivo)[0].lower()
+            tipo_grupo = "Control" if "control" in nombre_clean else "Magnetico" if "cm" in nombre_clean else "Desc"
+            replica = ''.join(filter(str.isdigit, nombre_clean))
+            if not replica: replica = "1"
             
-            nombre_clean = os.path.splitext(archivo)[0].lower()
-            tipo = "Desconocido"
-            replica = "NA"
-
-            if "control" in nombre_clean:
-                tipo = "Control"
-                replica = ''.join(filter(str.isdigit, nombre_clean))
-            elif "cm" in nombre_clean:
-                tipo = "Magnetico"
-                replica = ''.join(filter(str.isdigit, nombre_clean))
-            else:
-                continue 
-
-            print(f"  ... Procesando: {archivo}")
-
-            res = procesar_imagen(ruta_completa)
+            res = procesar_imagen(cv2.imread(ruta_img), PARAMS) 
+            if not res: continue
             
-            if res:
-                # --- NUEVO: Agregar Overlay ---
-                cant_semillas = len(res['lista_semillas'])
-                cant_radiculas = len(res['lista_radiculas'])
+            factor = res['px_por_cm']
+            
+            base_info = {'Fecha': carpeta, 'Grupo': tipo_grupo, 'Replica': replica, 'Archivo': nombre_archivo, 'Escala_Usada': factor}
+            
+            for s in res['lista_semillas']:
+                row = base_info.copy()
+                row.update({'Tipo_Objeto': 'Semilla', 'ID_Objeto': s['id'], 'Medida_Tipo': 'Area_cm2', 'Medida_Valor': s['area_px']/(factor**2)})
+                filas_csv.append(row)
+            
+            for r in res['lista_radiculas']:
+                row_l = base_info.copy()
+                row_l.update({'Tipo_Objeto': 'Radicula', 'ID_Objeto': r['id'], 'Medida_Tipo': 'Largo_cm', 'Medida_Valor': r['largo_cm']})
+                filas_csv.append(row_l)
                 
-                # Dibujamos sobre la imagen de debug
-                if res['img_debug'] is not None:
-                    res['img_debug'] = dibujar_info_overlay(
-                        res['img_debug'], 
-                        cant_semillas, 
-                        cant_radiculas, 
-                        archivo
-                    )
-
-                # --- Visualización ---
-                if MOSTRAR_EN_PANTALLA and res['img_debug'] is not None:
-                    img_ver = redimensionar_para_ver(res['img_debug'], ALTO_MAXIMO_PANTALLA)
-                    cv2.imshow(f"Analizando: {archivo}", img_ver)
-                    key = cv2.waitKey(0) & 0xFF
-                    if key == 27: 
-                        MOSTRAR_EN_PANTALLA = False
-                        cv2.destroyAllWindows()
-
-                if GUARDAR_IMAGENES_TESTIGO and res['img_debug'] is not None:
-                    nombre_testigo = f"{nombre_carpeta}_{archivo}"
-                    cv2.imwrite(os.path.join(CARPETA_TESTIGOS, nombre_testigo), res['img_debug'])
-                
-                for rad in res['lista_radiculas']:
-                    filas_csv.append({
-                        'Fecha': nombre_carpeta,
-                        'Grupo': tipo,
-                        'Replica': replica,
-                        'Archivo': archivo,
-                        'Tipo_Objeto': 'Radicula',
-                        'ID_Objeto': rad['id'],
-                        'Medida_Valor': round(rad['largo_cm'], 4),
-                        'Medida_Tipo': 'Largo_cm'
-                    })
-                
-                for sem in res['lista_semillas']:
-                    filas_csv.append({
-                        'Fecha': nombre_carpeta,
-                        'Grupo': tipo,
-                        'Replica': replica,
-                        'Archivo': archivo,
-                        'Tipo_Objeto': 'Semilla',
-                        'ID_Objeto': sem['id'],
-                        'Medida_Valor': round(sem['area_px'], 2),
-                        'Medida_Tipo': 'Area_px'
-                    })
-
-    if MOSTRAR_EN_PANTALLA:
-        cv2.destroyAllWindows()
+                row_a = base_info.copy()
+                row_a.update({'Tipo_Objeto': 'Radicula', 'ID_Objeto': r['id'], 'Medida_Tipo': 'Area_cm2', 'Medida_Valor': r['area_px']/(factor**2)})
+                filas_csv.append(row_a)
+            
+            if res['img_debug'] is not None and GUARDAR_IMAGENES_TESTIGO:
+                nombre_unico = f"proc_{carpeta}_{nombre_archivo}"
+                cv2.imwrite(os.path.join(CARPETA_TESTIGOS, nombre_unico), res['img_debug'])
 
     if filas_csv:
         df = pd.DataFrame(filas_csv)
-        try:
-            df = df.sort_values(by=['Fecha', 'Grupo', 'Replica', 'Tipo_Objeto'])
-        except: pass
-        
-        print(f"\nGuardando CSV detallado en: {ARCHIVO_SALIDA}...")
-        df.to_csv(ARCHIVO_SALIDA, index=False, sep=',', encoding='utf-8')
-        print(df.head(10)) 
-    else:
-        print("No se encontraron datos.")
+        cols = ['Fecha', 'Grupo', 'Replica', 'Archivo', 'Tipo_Objeto', 'ID_Objeto', 'Medida_Tipo', 'Medida_Valor', 'Escala_Usada']
+        df = df[[c for c in cols if c in df.columns]]
+        df.to_csv(ARCHIVO_SALIDA, index=False)
+        print(f"\nListo. Datos guardados en {ARCHIVO_SALIDA}")
+    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
