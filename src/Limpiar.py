@@ -12,14 +12,18 @@ ARCHIVO_SALIDA = 'resultados_limpios.csv'
 # 3.0 es más conservador (borra solo lo "extremadamente raro").
 FACTOR_IQR = 1.5 
 
-def main():
-    print(f"--- INICIANDO LIMPIEZA DE DATOS ({ARCHIVO_ENTRADA}) ---")
+def limpiar_datos(
+    archivo_entrada=ARCHIVO_ENTRADA,
+    archivo_salida=ARCHIVO_SALIDA,
+    factor_iqr=FACTOR_IQR,
+):
+    print(f"--- INICIANDO LIMPIEZA DE DATOS ({archivo_entrada}) ---")
     
     try:
-        df = pd.read_csv(ARCHIVO_ENTRADA)
+        df = pd.read_csv(archivo_entrada)
     except FileNotFoundError:
-        print(f"Error: No se encontró el archivo {ARCHIVO_ENTRADA}")
-        return
+        print(f"Error: No se encontró el archivo {archivo_entrada}")
+        return None
 
     # Limpieza inicial de columnas de texto
     cols_texto = ['Grupo', 'Tipo_Objeto', 'Medida_Tipo']
@@ -62,8 +66,8 @@ def main():
         IQR = Q3 - Q1
         
         # 2. Definir Límites (Bigotes)
-        limite_inferior = Q1 - (FACTOR_IQR * IQR)
-        limite_superior = Q3 + (FACTOR_IQR * IQR)
+        limite_inferior = Q1 - (factor_iqr * IQR)
+        limite_superior = Q3 + (factor_iqr * IQR)
         
         # 3. Filtrar
         mascara_validos = (datos_grupo['Medida_Valor'] >= limite_inferior) & \
@@ -94,16 +98,26 @@ def main():
 
     total_final = len(df_final)
     borrados_totales = total_inicial - total_final
-    porcentaje = (borrados_totales / total_inicial) * 100
+    porcentaje = (borrados_totales / total_inicial) * 100 if total_inicial else 0
     
     print("-" * 70)
     print(f"Total inicial: {total_inicial}")
     print(f"Total final:   {total_final}")
     print(f"Se eliminaron {borrados_totales} datos ruidosos ({porcentaje:.2f}%)")
     
-    df_final.to_csv(ARCHIVO_SALIDA, index=False)
-    print(f"\n[OK] Archivo limpio guardado como: {ARCHIVO_SALIDA}")
+    df_final.to_csv(archivo_salida, index=False)
+    print(f"\n[OK] Archivo limpio guardado como: {archivo_salida}")
     print("Ahora puedes usar este archivo nuevo en tus gráficas.")
+    return {
+        "archivo_salida": archivo_salida,
+        "total_inicial": total_inicial,
+        "total_final": total_final,
+        "borrados_totales": borrados_totales,
+        "factor_iqr": factor_iqr,
+    }
+
+def main():
+    limpiar_datos()
 
 if __name__ == "__main__":
     main()

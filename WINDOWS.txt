@@ -1,0 +1,19 @@
+Para usar esto en Windows:
+
+1. Instala Python 3.
+2. Abri uno de estos archivos con doble clic:
+   - Abrir PipelineGUI.bat
+   - Abrir AsignadorGUI.bat
+   - Abrir CargarFotos.bat
+
+La primera vez:
+- crea un entorno virtual en .venv-win
+- instala todas las dependencias de requirements.txt
+- abre la aplicacion elegida
+
+Las siguientes veces:
+- reutiliza el mismo entorno virtual
+- vuelve a verificar dependencias
+- abre la aplicacion
+
+Si algo falla, la ventana queda abierta para mostrar el error.

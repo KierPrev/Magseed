@@ -1,0 +1,29 @@
+analysis_scope,source_exp_id,group_by,response_metric,exp_id,magnet,magnet_pole,treatment_floor,floor,position,n_total,n_valid,n_missing,mean,std,median,min,max,treatment_role,treatment_label
+global,all,overall,pre_weight,,,,,,,27,27,0,3.6907037037037034,0.2739108241766644,3.668,3.189,4.428,,
+global,all,overall,post_weight,,,,,,,27,0,27,,,,,,,
+global,all,overall,delta_weight,,,,,,,27,0,27,,,,,,,
+global,all,overall,pct_change,,,,,,,27,0,27,,,,,,,
+global,all,exp_id,pre_weight,20260404,,,,,,27,27,0,3.690703703703704,0.27391082417666435,3.668,3.189,4.428,,
+global,all,exp_id,post_weight,20260404,,,,,,27,0,27,,,,,,,
+global,all,exp_id,delta_weight,20260404,,,,,,27,0,27,,,,,,,
+global,all,exp_id,pct_change,20260404,,,,,,27,0,27,,,,,,,
+global,all,magnet,pre_weight,,NONE,,,,,27,27,0,3.690703703703704,0.27391082417666435,3.668,3.189,4.428,,
+global,all,magnet,post_weight,,NONE,,,,,27,0,27,,,,,,,
+global,all,magnet,delta_weight,,NONE,,,,,27,0,27,,,,,,,
+global,all,magnet,pct_change,,NONE,,,,,27,0,27,,,,,,,
+global,all,magnet_pole,pre_weight,,,NONE,,,,27,27,0,3.690703703703704,0.27391082417666435,3.668,3.189,4.428,,
+global,all,magnet_pole,post_weight,,,NONE,,,,27,0,27,,,,,,,
+global,all,magnet_pole,delta_weight,,,NONE,,,,27,0,27,,,,,,,
+global,all,magnet_pole,pct_change,,,NONE,,,,27,0,27,,,,,,,
+global,all,magnet_and_pole,pre_weight,,NONE,NONE,,,,27,27,0,3.690703703703704,0.27391082417666435,3.668,3.189,4.428,,
+global,all,magnet_and_pole,post_weight,,NONE,NONE,,,,27,0,27,,,,,,,
+global,all,magnet_and_pole,delta_weight,,NONE,NONE,,,,27,0,27,,,,,,,
+global,all,magnet_and_pole,pct_change,,NONE,NONE,,,,27,0,27,,,,,,,
+global,all,treatment_role,pre_weight,,,,,,,27,27,0,3.690703703703704,0.27391082417666435,3.668,3.189,4.428,control,
+global,all,treatment_role,post_weight,,,,,,,27,0,27,,,,,,control,
+global,all,treatment_role,delta_weight,,,,,,,27,0,27,,,,,,control,
+global,all,treatment_role,pct_change,,,,,,,27,0,27,,,,,,control,
+global,all,treatment_label,pre_weight,,,,,,,27,27,0,3.690703703703704,0.27391082417666435,3.668,3.189,4.428,,Control negativo
+global,all,treatment_label,post_weight,,,,,,,27,0,27,,,,,,,Control negativo
+global,all,treatment_label,delta_weight,,,,,,,27,0,27,,,,,,,Control negativo
+global,all,treatment_label,pct_change,,,,,,,27,0,27,,,,,,,Control negativo

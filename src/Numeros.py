@@ -12,13 +12,17 @@ ARCHIVO = 'resultados_limpios.csv'
 TIPO_MEDIDA = 'Largo_cm'  
 TIPO_OBJETO = 'Radicula'
 
-def main():
-    print(f"\n[ANALISIS] INICIANDO ANÁLISIS ESTADÍSTICO ({TIPO_MEDIDA})")
+def analizar_estadisticas(
+    archivo=ARCHIVO,
+    tipo_medida=TIPO_MEDIDA,
+    tipo_objeto=TIPO_OBJETO,
+):
+    print(f"\n[ANALISIS] INICIANDO ANÁLISIS ESTADÍSTICO ({tipo_medida})")
     print("=" * 60)
 
     try:
         # 1. Cargar datos
-        df = pd.read_csv(ARCHIVO)
+        df = pd.read_csv(archivo)
         
         # Limpieza de strings (sacar espacios en blanco)
         df['Grupo'] = df['Grupo'].astype(str).str.strip()
@@ -30,14 +34,14 @@ def main():
 
         # 2. Filtrar lo que nos interesa
         df_subset = df[
-            (df['Tipo_Objeto'] == TIPO_OBJETO) & 
-            (df['Medida_Tipo'] == TIPO_MEDIDA)
+            (df['Tipo_Objeto'] == tipo_objeto) & 
+            (df['Medida_Tipo'] == tipo_medida)
         ].copy()
 
         if df_subset.empty:
-            print(f"[ERROR] No encontré datos para '{TIPO_OBJETO}' con medida '{TIPO_MEDIDA}'.")
+            print(f"[ERROR] No encontré datos para '{tipo_objeto}' con medida '{tipo_medida}'.")
             print("Revisá que el CSV tenga datos de 'Largo_cm' o cambiá la configuración a 'Area_cm2'.")
-            return
+            return None
 
         # ==========================================
         # ANÁLISIS 1: INDIVIDUAL (Promedio por Raíz)
@@ -92,10 +96,22 @@ def main():
                 print("      No hay evidencia suficiente para decir que son distintos.")
             print("-" * 30)
 
+        return {
+            "archivo": archivo,
+            "tipo_objeto": tipo_objeto,
+            "tipo_medida": tipo_medida,
+            "cantidad_registros": len(df_subset),
+            "tratamientos": list(grupos_tratamiento),
+        }
+
     except FileNotFoundError:
-        print(f"No encontré el archivo: {ARCHIVO}")
+        print(f"No encontré el archivo: {archivo}")
     except Exception as e:
         print(f"Ocurrió un error inesperado: {e}")
+    return None
+
+def main():
+    analizar_estadisticas()
 
 if __name__ == "__main__":
     main()

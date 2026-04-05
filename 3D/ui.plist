@@ -1,0 +1,6 @@
+from build123d import *
+
+with BuildPart() as placa:
+    Box(100, 80, 8)
+    for x, y in grid_locations(20, 20, 5, 4):
+        Cone(bottom_radius=3, top_radius=7.5, height=7)
