@@ -441,6 +441,42 @@ class AnalisisTrayGUI(tk.Tk):
         self.log_widget.see(tk.END)
         self.log_widget.update_idletasks()
 
+    def _format_p_value(self, valor) -> str:
+        if self._es_nan(valor):
+            return "n/d"
+        if valor < 0.001:
+            return "<0.001"
+        return f"{valor:.3f}"
+
+    def _format_value(self, valor, decimales: int = 3) -> str:
+        if self._es_nan(valor):
+            return "n/d"
+        return f"{valor:.{decimales}f}"
+
+    def _format_coef_and_p(self, coef, p_value) -> str:
+        if self._es_nan(coef) or self._es_nan(p_value):
+            return "no disponible"
+        return f"coef {coef:.3f} | p {self._format_p_value(p_value)}"
+
+    def _describe_spatial_effect(self, resumen: dict) -> str:
+        disponibles = [
+            valor
+            for valor in (
+                resumen["floor_delta_p_value"],
+                resumen["position_delta_p_value"],
+            )
+            if not self._es_nan(valor)
+        ]
+        if not disponibles:
+            return "sin test disponible"
+
+        minimo = min(disponibles)
+        if minimo < 0.05:
+            return "hay señal espacial"
+        if minimo < 0.10:
+            return "hay una señal espacial débil"
+        return "sin señal espacial clara"
+
     def set_busy(self, busy: bool) -> None:
         state = tk.DISABLED if busy else tk.NORMAL
         for button in self.action_buttons:
@@ -449,7 +485,8 @@ class AnalisisTrayGUI(tk.Tk):
         self.update_idletasks()
 
     def execute_with_log(self, title: str, callback):
-        self.log(f"\n=== {title} ===\n")
+        separador = "=" * 72
+        self.log(f"\n{separador}\n{title}\n{separador}\n")
         self.status_var.set(f"Ejecutando: {title}...")
         self.set_busy(True)
         writer = TextWidgetWriter(self.log_widget)
@@ -459,10 +496,12 @@ class AnalisisTrayGUI(tk.Tk):
                 result = callback()
         except Exception as exc:
             traceback.print_exc(file=writer)
+            self.log(f"\nError durante: {title}\n")
             self.status_var.set(f"Falló: {title}")
             messagebox.showerror("Error", str(exc))
             return None
         else:
+            self.log(f"\nListo: {title}\n")
             self.status_var.set(f"Terminado: {title}")
             return result
         finally:
@@ -562,52 +601,65 @@ class AnalisisTrayGUI(tk.Tk):
     def render_summary(self, result: dict) -> None:
         lineas = [
             f"Experimentos analizados: {len(result['experiment_summaries'])}",
+            f"Consolidado global: {result['global_analysis_dir']}",
             "",
         ]
 
         for resumen in result["experiment_summaries"]:
+            comparacion_disponible = any(
+                not self._es_nan(valor)
+                for valor in (
+                    resumen["magnetic_vs_control_delta_p_value"],
+                    resumen["magnetic_vs_control_pct_p_value"],
+                    resumen["magnetic_vs_control_log_p_value"],
+                )
+            )
+
             lineas.extend(
                 [
-                    f"Experimento {resumen['exp_id']}",
-                    f"  Filas totales: {resumen['total_rows']}",
-                    f"  Tratamientos magnetic/control: {resumen['magnetic_rows']} / {resumen['control_rows']}",
-                    f"  Delta válido: {resumen['valid_delta_rows']} | excluidas: {resumen['excluded_delta_rows']}",
-                    f"  Pct_change válido: {resumen['valid_pct_rows']} | excluidas: {resumen['excluded_pct_rows']}",
+                    f"{resumen['exp_id']} | {resumen['experiment_kind_label']}",
                     (
-                        "  Intensidad magnetica en delta_weight: "
-                        f"coef={resumen['magnetic_intensity_delta_coef']:.6f} | "
-                        f"p-value={resumen['magnetic_intensity_delta_p_value']:.6g}"
-                        if not self._es_nan(resumen["magnetic_intensity_delta_coef"])
-                        else "  Intensidad magnetica en delta_weight: no disponible"
+                        "Datos: "
+                        f"{resumen['total_rows']} trays | "
+                        f"delta {resumen['valid_delta_rows']}/{resumen['total_rows']} | "
+                        f"pct {resumen['valid_pct_rows']}/{resumen['total_rows']} | "
+                        f"log {resumen['valid_log_rows']}/{resumen['total_rows']}"
                     ),
                     (
-                        "  Intensidad magnetica en pct_change: "
-                        f"coef={resumen['magnetic_intensity_pct_coef']:.6f} | "
-                        f"p-value={resumen['magnetic_intensity_pct_p_value']:.6g}"
-                        if not self._es_nan(resumen["magnetic_intensity_pct_coef"])
-                        else "  Intensidad magnetica en pct_change: no disponible"
+                        "Grupos: "
+                        f"magnetic={resumen['magnetic_rows']} | "
+                        f"control={resumen['control_rows']} | "
+                        f"metadata={'completa' if resumen['has_complete_metadata'] else 'incompleta'}"
                     ),
                     (
-                        "  Magnetic vs control: "
-                        f"delta p={resumen['magnetic_vs_control_delta_p_value']:.6g}, "
-                        f"pct_change p={resumen['magnetic_vs_control_pct_p_value']:.6g}"
-                        if not self._es_nan(
-                            resumen["magnetic_vs_control_delta_p_value"]
-                        )
-                        or not self._es_nan(resumen["magnetic_vs_control_pct_p_value"])
-                        else "  Magnetic vs control: no disponible"
+                        "Referencia: "
+                        f"delta_control={self._format_value(resumen['control_delta_mean'])} "
+                        f"(n={resumen['control_delta_count']}) | "
+                        f"log_control={self._format_value(resumen['control_log_ratio_mean'])} "
+                        f"(n={resumen['control_log_ratio_count']})"
                     ),
                     (
-                        "  Efecto espacial (delta_weight): "
-                        f"floor p={resumen['floor_delta_p_value']:.6g}, "
-                        f"position p={resumen['position_delta_p_value']:.6g}"
-                        if not self._es_nan(resumen["floor_delta_p_value"])
-                        or not self._es_nan(resumen["position_delta_p_value"])
-                        else "  Efecto espacial (delta_weight): no disponible"
+                        "Intensidad magnética: "
+                        f"delta {self._format_coef_and_p(resumen['magnetic_intensity_delta_coef'], resumen['magnetic_intensity_delta_p_value'])} | "
+                        f"pct {self._format_coef_and_p(resumen['magnetic_intensity_pct_coef'], resumen['magnetic_intensity_pct_p_value'])} | "
+                        f"log {self._format_coef_and_p(resumen['magnetic_intensity_log_coef'], resumen['magnetic_intensity_log_p_value'])}"
                     ),
-                    f"  Metadata completa: {'sí' if resumen['has_complete_metadata'] else 'no'}",
-                    f"  Processed: {resumen['processed_dir']}",
-                    f"  Plots: {resumen['plots_dir']}",
+                    (
+                        "Magnetic vs control: "
+                        f"delta p={self._format_p_value(resumen['magnetic_vs_control_delta_p_value'])} | "
+                        f"pct p={self._format_p_value(resumen['magnetic_vs_control_pct_p_value'])} | "
+                        f"log p={self._format_p_value(resumen['magnetic_vs_control_log_p_value'])}"
+                        if comparacion_disponible
+                        else "Magnetic vs control: no disponible"
+                    ),
+                    (
+                        "Efecto espacial (delta): "
+                        f"floor p={self._format_p_value(resumen['floor_delta_p_value'])} | "
+                        f"position p={self._format_p_value(resumen['position_delta_p_value'])} | "
+                        f"{self._describe_spatial_effect(resumen)}"
+                    ),
+                    f"Archivos: processed={resumen['processed_dir']}",
+                    f"          plots={resumen['plots_dir']}",
                     "",
                 ]
             )
@@ -615,10 +667,8 @@ class AnalisisTrayGUI(tk.Tk):
         if result["warnings"]:
             lineas.append("Advertencias:")
             for advertencia in result["warnings"]:
-                lineas.append(f"  - {advertencia}")
+                lineas.append(f"- {advertencia}")
             lineas.append("")
-
-        lineas.append(f"Consolidado global: {result['global_analysis_dir']}")
 
         self.summary_widget.configure(state=tk.NORMAL)
         self.summary_widget.delete("1.0", tk.END)

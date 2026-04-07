@@ -65,6 +65,29 @@ METRIC_FOREST_TITLES = {
     "pct_change": "Tratamiento vs Control (pct_change)",
     "log_ratio_centered": "Tratamiento vs Control (log_ratio centrado por control)",
 }
+TREATMENT_VS_CONTROL_COLUMNS = [
+    "analysis_scope",
+    "source_exp_id",
+    "response_metric",
+    "treatment_label",
+    "control_label",
+    "analysis_type",
+    "method",
+    "estimate_diff_vs_control",
+    "std_error",
+    "statistic",
+    "statistic_name",
+    "p_value",
+    "p_value_adjusted",
+    "reject_null_fdr_bh",
+    "conf_int_low",
+    "conf_int_high",
+    "n_treatment",
+    "n_control",
+    "mean_treatment",
+    "mean_control",
+    "notes",
+]
 
 
 def construir_parser() -> argparse.ArgumentParser:
@@ -204,6 +227,12 @@ def enriquecer_tratamientos(enriched: pd.DataFrame) -> pd.DataFrame:
     return enriched
 
 
+def es_experimento_control_negativo(data: pd.DataFrame) -> bool:
+    return bool(data["has_metadata"].all()) and bool(
+        data["magnet"].eq(MAGNET_NONE_VALUE).all()
+    )
+
+
 def construir_warning_row(fila: pd.Series) -> str:
     mensajes: list[str] = []
     if not fila["has_metadata"]:
@@ -225,10 +254,18 @@ def calcular_factor_normalizacion_control(
     exp_name: str,
 ) -> tuple[float, int, list[str]]:
     advertencias: list[str] = []
-    mask_control = (
-        enriched["treatment_floor"].eq(CONTROL_TREATMENT_FLOOR)
-        & enriched["has_complete_weights"]
-    )
+    es_control_negativo = es_experimento_control_negativo(enriched)
+    if es_control_negativo:
+        mask_control = enriched["has_complete_weights"]
+        expected_count = int(mask_control.sum())
+        control_desc = "todas las bandejas del control negativo"
+    else:
+        mask_control = (
+            enriched["treatment_floor"].eq(CONTROL_TREATMENT_FLOOR)
+            & enriched["has_complete_weights"]
+        )
+        expected_count = 3
+        control_desc = f"treatment_floor={CONTROL_TREATMENT_FLOOR}"
     deltas_control = (
         enriched.loc[mask_control, "post_weight"] - enriched.loc[mask_control, "pre_weight"]
     ).dropna()
@@ -236,14 +273,14 @@ def calcular_factor_normalizacion_control(
 
     if cantidad_controles == 0:
         advertencias.append(
-            f"El experimento {exp_name} no tiene controles internos validos "
-            f"(treatment_floor={CONTROL_TREATMENT_FLOOR}) para normalizar pesos."
+            f"El experimento {exp_name} no tiene controles validos "
+            f"({control_desc}) para normalizar pesos."
         )
         return np.nan, cantidad_controles, advertencias
 
-    if cantidad_controles != 3:
+    if cantidad_controles != expected_count:
         advertencias.append(
-            f"El experimento {exp_name} esperaba 3 deltas de control para normalizar, "
+            f"El experimento {exp_name} esperaba {expected_count} deltas de control para normalizar, "
             f"pero encontro {cantidad_controles}. Se uso el promedio disponible."
         )
 
@@ -264,12 +301,24 @@ def calcular_media_log_control(
     exp_name: str,
 ) -> tuple[float, int, list[str]]:
     advertencias: list[str] = []
-    mask_control = (
-        enriched["treatment_floor"].eq(CONTROL_TREATMENT_FLOOR)
-        & enriched["has_complete_weights"]
-        & (enriched["raw_pre_weight"] > 0)
-        & (enriched["raw_post_weight"] > 0)
-    )
+    es_control_negativo = es_experimento_control_negativo(enriched)
+    if es_control_negativo:
+        mask_control = (
+            enriched["has_complete_weights"]
+            & (enriched["raw_pre_weight"] > 0)
+            & (enriched["raw_post_weight"] > 0)
+        )
+        expected_count = int(mask_control.sum())
+        control_desc = "todas las bandejas del control negativo"
+    else:
+        mask_control = (
+            enriched["treatment_floor"].eq(CONTROL_TREATMENT_FLOOR)
+            & enriched["has_complete_weights"]
+            & (enriched["raw_pre_weight"] > 0)
+            & (enriched["raw_post_weight"] > 0)
+        )
+        expected_count = 3
+        control_desc = f"treatment_floor={CONTROL_TREATMENT_FLOOR}"
     log_ratios_control = np.log(
         enriched.loc[mask_control, "raw_post_weight"]
         / enriched.loc[mask_control, "raw_pre_weight"]
@@ -279,14 +328,14 @@ def calcular_media_log_control(
 
     if cantidad_controles == 0:
         advertencias.append(
-            f"El experimento {exp_name} no tiene controles internos validos "
-            f"(treatment_floor={CONTROL_TREATMENT_FLOOR}) para centrar log(post/pre)."
+            f"El experimento {exp_name} no tiene controles validos "
+            f"({control_desc}) para centrar log(post/pre)."
         )
         return np.nan, cantidad_controles, advertencias
 
-    if cantidad_controles != 3:
+    if cantidad_controles != expected_count:
         advertencias.append(
-            f"El experimento {exp_name} esperaba 3 controles para centrar log(post/pre), "
+            f"El experimento {exp_name} esperaba {expected_count} controles para centrar log(post/pre), "
             f"pero encontro {cantidad_controles}. Se uso el promedio disponible."
         )
 
@@ -913,6 +962,7 @@ def ajustar_modelo(
 def modelos_experimento(data: pd.DataFrame) -> pd.DataFrame:
     exp_id = str(data["exp_id"].iloc[0])
     modelos: list[pd.DataFrame] = [correlaciones_experimento(data, exp_id)]
+    es_control_negativo = es_experimento_control_negativo(data)
 
     intensity_data = data.dropna(subset=["magnetic_intensity_rank"]).copy()
     intensity_formula_delta = (
@@ -987,6 +1037,42 @@ def modelos_experimento(data: pd.DataFrame) -> pd.DataFrame:
             ]
         )
 
+    spatial_formula_delta = (
+        "delta_weight ~ pre_weight + C(treatment_label) + C(floor) + C(position_factor)"
+    )
+    spatial_formula_pct = (
+        "pct_change ~ C(treatment_label) + C(floor) + C(position_factor)"
+    )
+    spatial_formula_log = (
+        "log_ratio_centered ~ C(treatment_label) + C(floor) + C(position_factor)"
+    )
+    spatial_data = data.dropna(subset=["treatment_label"]).copy()
+    modelos.extend(
+        [
+            ajustar_modelo(
+                spatial_data,
+                exp_id=exp_id,
+                response_metric="delta_weight",
+                model_name="delta_spatial_effect",
+                formula=spatial_formula_delta,
+            ),
+            ajustar_modelo(
+                spatial_data,
+                exp_id=exp_id,
+                response_metric="pct_change",
+                model_name="pct_spatial_effect",
+                formula=spatial_formula_pct,
+            ),
+            ajustar_modelo(
+                spatial_data,
+                exp_id=exp_id,
+                response_metric="log_ratio_centered",
+                model_name="log_ratio_centered_spatial_effect",
+                formula=spatial_formula_log,
+            ),
+        ]
+    )
+
     comparison_data = data[data["treatment_role"].isin(["magnetic", "control"])].copy()
     comparison_formula_delta = (
         "delta_weight ~ pre_weight + C(treatment_role) + C(floor) + C(position_factor)"
@@ -1024,7 +1110,7 @@ def modelos_experimento(data: pd.DataFrame) -> pd.DataFrame:
                 ),
             ]
         )
-    else:
+    elif not es_control_negativo:
         modelos.extend(
             [
                 modelo_no_disponible(
@@ -1065,6 +1151,9 @@ def modelos_experimento(data: pd.DataFrame) -> pd.DataFrame:
 
 def comparaciones_tratamiento_vs_control_experimento(data: pd.DataFrame) -> pd.DataFrame:
     exp_id = str(data["exp_id"].iloc[0])
+    if es_experimento_control_negativo(data):
+        return pd.DataFrame(columns=TREATMENT_VS_CONTROL_COLUMNS)
+
     filas: list[dict[str, Any]] = []
 
     subset = data[
@@ -1100,7 +1189,8 @@ def comparaciones_tratamiento_vs_control_experimento(data: pd.DataFrame) -> pd.D
                     "mean_control": np.nan,
                     "notes": "No hay grupo Control disponible para comparar.",
                 }
-            ]
+            ],
+            columns=TREATMENT_VS_CONTROL_COLUMNS,
         )
 
     subset["position_factor"] = subset["position"].astype("string")
@@ -1306,7 +1396,7 @@ def comparaciones_tratamiento_vs_control_experimento(data: pd.DataFrame) -> pd.D
 
         filas.extend(metric_rows)
 
-    return pd.DataFrame(filas)
+    return pd.DataFrame(filas, columns=TREATMENT_VS_CONTROL_COLUMNS)
 
 
 def guardar_boxplot_stripplot(
@@ -1456,6 +1546,7 @@ def guardar_plots_experimento(
     comparisons: pd.DataFrame | None = None,
 ) -> None:
     plots_dir.mkdir(parents=True, exist_ok=True)
+    es_control_negativo = es_experimento_control_negativo(data)
 
     orden_role = [
         etiqueta
@@ -1515,7 +1606,7 @@ def guardar_plots_experimento(
         order=orden_treatment,
         xlabel="tratamiento",
     )
-    if orden_role:
+    if len(orden_role) >= 2 and not es_control_negativo:
         data_role = data.dropna(subset=["treatment_role_label"]).copy()
         guardar_boxplot_stripplot(
             data_role,
@@ -1747,6 +1838,12 @@ def construir_resumen_experimento(
     models: pd.DataFrame,
 ) -> dict[str, Any]:
     exp_dir = Path(str(enriched["exp_dir"].iloc[0]))
+    magnet = str(enriched["magnet"].iloc[0]).strip()
+    magnet_pole = str(enriched["magnet_pole"].iloc[0]).strip()
+    has_complete_metadata = bool(enriched["has_metadata"].all())
+    has_active_magnet = bool(enriched["has_active_magnet"].any())
+    is_negative_control = es_experimento_control_negativo(enriched)
+
     coef_delta, p_delta = _coef_termino(
         models,
         response_metric="delta_weight",
@@ -1787,13 +1884,13 @@ def construir_resumen_experimento(
         models,
         "C(floor)",
         "delta_weight",
-        model_name="delta_magnetic_intensity",
+        model_name="delta_spatial_effect",
     )
     p_position_delta = _valor_p_term(
         models,
         "C(position_factor)",
         "delta_weight",
-        model_name="delta_magnetic_intensity",
+        model_name="delta_spatial_effect",
     )
 
     total = len(enriched)
@@ -1802,7 +1899,6 @@ def construir_resumen_experimento(
     valid_log = int(enriched["valid_log_ratio"].sum())
     magnetic_rows = int(enriched["treatment_role"].eq("magnetic").sum())
     control_rows = int(enriched["treatment_role"].eq("control").sum())
-    has_active_magnet = bool(enriched["has_active_magnet"].any())
     control_delta_mean = pd.to_numeric(
         enriched["control_delta_mean"], errors="coerce"
     ).dropna()
@@ -1810,8 +1906,21 @@ def construir_resumen_experimento(
         enriched["control_log_ratio_mean"], errors="coerce"
     ).dropna()
 
+    if is_negative_control:
+        experiment_kind_label = "Control negativo"
+    elif has_active_magnet:
+        experiment_kind_label = f"Tratamiento magnetico ({magnet}/{magnet_pole})"
+    elif has_complete_metadata:
+        experiment_kind_label = f"Experimento sin magnet activo ({magnet}/{magnet_pole})"
+    else:
+        experiment_kind_label = "Metadata incompleta"
+
     return {
         "exp_id": str(enriched["exp_id"].iloc[0]),
+        "magnet": magnet,
+        "magnet_pole": magnet_pole,
+        "is_negative_control": is_negative_control,
+        "experiment_kind_label": experiment_kind_label,
         "total_rows": total,
         "valid_delta_rows": valid_delta,
         "excluded_delta_rows": total - valid_delta,
@@ -1855,96 +1964,120 @@ def construir_resumen_experimento(
         else 0,
         "floor_delta_p_value": p_floor_delta,
         "position_delta_p_value": p_position_delta,
-        "has_complete_metadata": bool(enriched["has_metadata"].all()),
+        "has_complete_metadata": has_complete_metadata,
         "exp_dir": str(exp_dir),
         "processed_dir": str(exp_dir / "processed"),
         "plots_dir": str(exp_dir / "plots"),
     }
 
 
+def _valor_disponible(valor: float) -> bool:
+    return not np.isnan(valor)
+
+
+def _formatear_valor(valor: float, *, decimales: int = 3) -> str:
+    if np.isnan(valor):
+        return "n/d"
+    return f"{valor:.{decimales}f}"
+
+
+def _formatear_p_value(valor: float) -> str:
+    if np.isnan(valor):
+        return "n/d"
+    if valor < 0.001:
+        return "<0.001"
+    return f"{valor:.3f}"
+
+
+def _interpretar_efecto_espacial(p_floor: float, p_position: float) -> str:
+    disponibles = [valor for valor in (p_floor, p_position) if not np.isnan(valor)]
+    if not disponibles:
+        return "sin test disponible"
+
+    minimo = min(disponibles)
+    if minimo < 0.05:
+        return "hay señal espacial"
+    if minimo < 0.10:
+        return "hay una señal espacial débil"
+    return "sin señal espacial clara"
+
+
+def _resumir_coef_y_p(coef: float, p_value: float) -> str:
+    if np.isnan(coef) or np.isnan(p_value):
+        return "no disponible"
+    return f"coef={coef:.3f} | p={_formatear_p_value(p_value)}"
+
+
 def imprimir_resumen(
     resumenes_experimentos: list[dict[str, Any]],
     advertencias: list[str],
 ) -> None:
-    print(f"Experimentos analizados: {len(resumenes_experimentos)}")
-    print()
+    print("=" * 72)
+    print(f"Resumen de análisis | Experimentos: {len(resumenes_experimentos)}")
+    print("=" * 72)
 
     for resumen in resumenes_experimentos:
-        print(f"Experimento {resumen['exp_id']}")
-        print(f"  Filas totales: {resumen['total_rows']}")
-        print(
-            f"  Tratamientos magnetic/control: {resumen['magnetic_rows']} / {resumen['control_rows']}"
-        )
-        print(
-            "  Delta valido: "
-            f"{resumen['valid_delta_rows']} | excluidas: {resumen['excluded_delta_rows']}"
-        )
-        print(
-            "  Pct_change valido: "
-            f"{resumen['valid_pct_rows']} | excluidas: {resumen['excluded_pct_rows']}"
-        )
-        print(
-            "  Log ratio valido: "
-            f"{resumen['valid_log_rows']} | excluidas: {resumen['excluded_log_rows']}"
-        )
-        print(
-            "  Normalizacion por control: "
-            f"mean(delta_control)={resumen['control_delta_mean']:.6f} "
-            f"(n={resumen['control_delta_count']})"
-            if not np.isnan(resumen["control_delta_mean"])
-            else "  Normalizacion por control: no disponible"
-        )
-        print(
-            "  Centrado log por control: "
-            f"mean(log_control)={resumen['control_log_ratio_mean']:.6f} "
-            f"(n={resumen['control_log_ratio_count']})"
-            if not np.isnan(resumen["control_log_ratio_mean"])
-            else "  Centrado log por control: no disponible"
-        )
-        print(
-            "  Intensidad magnetica en delta_weight: "
-            f"coef={resumen['magnetic_intensity_delta_coef']:.6f} | "
-            f"p-value={resumen['magnetic_intensity_delta_p_value']:.6g}"
-            if not np.isnan(resumen["magnetic_intensity_delta_coef"])
-            else "  Intensidad magnetica en delta_weight: no disponible"
-        )
-        print(
-            "  Intensidad magnetica en pct_change: "
-            f"coef={resumen['magnetic_intensity_pct_coef']:.6f} | "
-            f"p-value={resumen['magnetic_intensity_pct_p_value']:.6g}"
-            if not np.isnan(resumen["magnetic_intensity_pct_coef"])
-            else "  Intensidad magnetica en pct_change: no disponible"
-        )
-        print(
-            "  Intensidad magnetica en log_ratio_centered: "
-            f"coef={resumen['magnetic_intensity_log_coef']:.6f} | "
-            f"p-value={resumen['magnetic_intensity_log_p_value']:.6g}"
-            if not np.isnan(resumen["magnetic_intensity_log_coef"])
-            else "  Intensidad magnetica en log_ratio_centered: no disponible"
-        )
-        print(
-            "  Magnetic vs control: "
-            f"delta p={resumen['magnetic_vs_control_delta_p_value']:.6g}, "
-            f"pct_change p={resumen['magnetic_vs_control_pct_p_value']:.6g}, "
-            f"log_ratio_centered p={resumen['magnetic_vs_control_log_p_value']:.6g}"
-            if not np.isnan(resumen["magnetic_vs_control_delta_p_value"])
-            or not np.isnan(resumen["magnetic_vs_control_pct_p_value"])
-            or not np.isnan(resumen["magnetic_vs_control_log_p_value"])
-            else "  Magnetic vs control: no disponible"
-        )
-        print(
-            "  Efecto espacial (delta_weight): "
-            f"floor p={resumen['floor_delta_p_value']:.6g}, position p={resumen['position_delta_p_value']:.6g}"
-            if not np.isnan(resumen["floor_delta_p_value"])
-            or not np.isnan(resumen["position_delta_p_value"])
-            else "  Efecto espacial (delta_weight): no disponible"
-        )
         print()
+        print(f"{resumen['exp_id']} | {resumen['experiment_kind_label']}")
+        print("-" * 72)
+        print(
+            "Datos: "
+            f"{resumen['total_rows']} trays | "
+            f"delta {resumen['valid_delta_rows']}/{resumen['total_rows']} | "
+            f"pct {resumen['valid_pct_rows']}/{resumen['total_rows']} | "
+            f"log {resumen['valid_log_rows']}/{resumen['total_rows']}"
+        )
+        print(
+            "Grupos: "
+            f"magnetic={resumen['magnetic_rows']} | control={resumen['control_rows']} | "
+            f"metadata={'completa' if resumen['has_complete_metadata'] else 'incompleta'}"
+        )
+        print(
+            "Referencia: "
+            f"delta_control={_formatear_valor(resumen['control_delta_mean'])} "
+            f"(n={resumen['control_delta_count']}) | "
+            f"log_control={_formatear_valor(resumen['control_log_ratio_mean'])} "
+            f"(n={resumen['control_log_ratio_count']})"
+        )
+        print(
+            "Intensidad magnética: "
+            f"delta { _resumir_coef_y_p(resumen['magnetic_intensity_delta_coef'], resumen['magnetic_intensity_delta_p_value']) } | "
+            f"pct { _resumir_coef_y_p(resumen['magnetic_intensity_pct_coef'], resumen['magnetic_intensity_pct_p_value']) } | "
+            f"log { _resumir_coef_y_p(resumen['magnetic_intensity_log_coef'], resumen['magnetic_intensity_log_p_value']) }"
+        )
+
+        comparacion_disponible = any(
+            _valor_disponible(valor)
+            for valor in (
+                resumen["magnetic_vs_control_delta_p_value"],
+                resumen["magnetic_vs_control_pct_p_value"],
+                resumen["magnetic_vs_control_log_p_value"],
+            )
+        )
+        if comparacion_disponible:
+            print(
+                "Magnetic vs control: "
+                f"delta p={_formatear_p_value(resumen['magnetic_vs_control_delta_p_value'])} | "
+                f"pct p={_formatear_p_value(resumen['magnetic_vs_control_pct_p_value'])} | "
+                f"log p={_formatear_p_value(resumen['magnetic_vs_control_log_p_value'])}"
+            )
+        else:
+            print("Magnetic vs control: no disponible")
+
+        print(
+            "Efecto espacial (delta): "
+            f"floor p={_formatear_p_value(resumen['floor_delta_p_value'])} | "
+            f"position p={_formatear_p_value(resumen['position_delta_p_value'])} | "
+            f"{_interpretar_efecto_espacial(resumen['floor_delta_p_value'], resumen['position_delta_p_value'])}"
+        )
+        print(f"Archivos: processed={resumen['processed_dir']} | plots={resumen['plots_dir']}")
 
     if advertencias:
-        print("Advertencias:")
+        print()
+        print("Advertencias")
+        print("-" * 72)
         for advertencia in sorted(set(advertencias)):
-            print(f"  - {advertencia}")
+            print(f"- {advertencia}")
 
 
 def run_analysis(exp_id: str | None = None, verbose: bool = True) -> dict[str, Any]:
