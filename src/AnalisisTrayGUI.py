@@ -45,8 +45,8 @@ class AnalisisTrayGUI(tk.Tk):
         super().__init__()
 
         self.title("Analisis de Trays")
-        self.geometry("1160x820")
-        self.minsize(1024, 720)
+        self.geometry("1000x700")
+        self.minsize(900, 600)
         self.configure(bg=BG_COLOR)
 
         self.status_var = tk.StringVar(value="Listo para analizar trays.csv.")
@@ -133,9 +133,8 @@ class AnalisisTrayGUI(tk.Tk):
         container = ttk.Frame(self, padding=24, style="App.TFrame")
         container.pack(fill="both", expand=True)
         container.columnconfigure(0, weight=1)
-        container.rowconfigure(2, weight=1)
-        container.rowconfigure(3, weight=1)
-        container.rowconfigure(4, weight=2)
+        container.rowconfigure(2, weight=1)  # top_row
+        container.rowconfigure(3, weight=1)  # bottom_row for summary and log
 
         ttk.Label(
             container,
@@ -164,13 +163,21 @@ class AnalisisTrayGUI(tk.Tk):
             row=0, column=1, sticky="nsew", padx=(10, 0)
         )
 
-        self._build_summary_card(container).grid(
-            row=3, column=0, sticky="nsew", pady=(18, 0)
+        # Nuevo frame para los paneles de resumen y log, uno al lado del otro
+        bottom_row = ttk.Frame(container, style="App.TFrame")
+        bottom_row.grid(row=3, column=0, sticky="nsew", pady=(18, 0))
+        bottom_row.columnconfigure(0, weight=1)  # Columna para el resumen
+        bottom_row.columnconfigure(1, weight=1)  # Columna para el log
+        bottom_row.rowconfigure(0, weight=1)  # Ambos paneles se expanden verticalmente
+
+        self._build_summary_card(bottom_row).grid(
+            row=0, column=0, sticky="nsew", padx=(0, 10)
         )
-        self._build_log_card(container).grid(
-            row=4, column=0, sticky="nsew", pady=(18, 0)
+        self._build_log_card(bottom_row).grid(
+            row=0, column=1, sticky="nsew", padx=(10, 0)
         )
 
+        # El status_label se mueve una fila hacia arriba
         status_label = tk.Label(
             container,
             textvariable=self.status_var,
@@ -180,7 +187,7 @@ class AnalisisTrayGUI(tk.Tk):
             font=("Helvetica", 10),
             pady=10,
         )
-        status_label.grid(row=5, column=0, sticky="ew")
+        status_label.grid(row=4, column=0, sticky="ew")
 
     def _build_selection_card(self, parent):
         frame = ttk.Frame(parent, padding=20, style="Card.TFrame")
@@ -241,7 +248,58 @@ class AnalisisTrayGUI(tk.Tk):
         return frame
 
     def _build_actions_card(self, parent):
-        frame = ttk.Frame(parent, padding=20, style="Card.TFrame")
+        outer_frame = ttk.Frame(parent, padding=20, style="Card.TFrame")
+        outer_frame.columnconfigure(0, weight=1)
+        outer_frame.rowconfigure(0, weight=1)
+
+        canvas = tk.Canvas(outer_frame, bg=CARD_COLOR, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(outer_frame, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns", padx=(10, 0))
+
+        frame = ttk.Frame(canvas, style="Card.TFrame")
+        canvas_window = canvas.create_window((0, 0), window=frame, anchor="nw")
+
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+
+        frame.bind("<Configure>", on_frame_configure)
+        canvas.bind("<Configure>", on_canvas_configure)
+
+        def _on_mousewheel(event):
+            num = getattr(event, "num", 0)
+            delta = getattr(event, "delta", 0)
+
+            if sys.platform == "darwin":
+                scroll_amount = -1 * delta
+            else:
+                scroll_amount = int(-1 * (delta / 120)) if delta else 0
+
+            if num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif num == 5:
+                canvas.yview_scroll(1, "units")
+            elif scroll_amount:
+                canvas.yview_scroll(scroll_amount, "units")
+
+        def _bind_mousewheel(event):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            canvas.bind_all("<Button-4>", _on_mousewheel)
+            canvas.bind_all("<Button-5>", _on_mousewheel)
+
+        def _unbind_mousewheel(event):
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+
+        outer_frame.bind("<Enter>", _bind_mousewheel)
+        outer_frame.bind("<Leave>", _unbind_mousewheel)
+
         frame.columnconfigure(0, weight=1)
 
         ttk.Label(frame, text="Acciones", style="Section.TLabel").grid(
@@ -254,6 +312,7 @@ class AnalisisTrayGUI(tk.Tk):
                 "El backend guarda CSVs en processed/ y figuras en plots/."
             ),
             style="Muted.TLabel",
+            wraplength=250,
         ).grid(row=1, column=0, sticky="w", pady=(4, 16))
 
         analyze_selected_button = ttk.Button(
@@ -275,9 +334,12 @@ class AnalisisTrayGUI(tk.Tk):
         ttk.Label(frame, textvariable=self.selected_exp_var, style="Body.TLabel").grid(
             row=4, column=0, sticky="w"
         )
-        ttk.Label(frame, textvariable=self.global_dir_var, style="Muted.TLabel").grid(
-            row=5, column=0, sticky="w", pady=(4, 14)
-        )
+        ttk.Label(
+            frame,
+            textvariable=self.global_dir_var,
+            style="Muted.TLabel",
+            wraplength=250,
+        ).grid(row=5, column=0, sticky="w", pady=(4, 14))
 
         open_processed_button = ttk.Button(
             frame,
@@ -306,7 +368,7 @@ class AnalisisTrayGUI(tk.Tk):
         open_global_button.grid(row=8, column=0, sticky="ew")
         self.action_buttons.append(open_global_button)
 
-        return frame
+        return outer_frame
 
     def _build_summary_card(self, parent):
         frame = ttk.Frame(parent, padding=20, style="Card.TFrame")
@@ -326,7 +388,6 @@ class AnalisisTrayGUI(tk.Tk):
             highlightthickness=1,
             highlightbackground=BORDER_COLOR,
             font=("Menlo", 11),
-            height=12,
         )
         self.summary_widget.grid(row=1, column=0, sticky="nsew")
         self.summary_widget.insert(
@@ -368,7 +429,6 @@ class AnalisisTrayGUI(tk.Tk):
             highlightthickness=1,
             highlightbackground=BORDER_COLOR,
             font=("Menlo", 11),
-            height=14,
         )
         self.log_widget.grid(row=1, column=0, sticky="nsew")
         return frame
