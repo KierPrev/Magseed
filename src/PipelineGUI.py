@@ -17,6 +17,7 @@ BORDER_COLOR = "#d7d0c6"
 DEFAULT_IQR_FACTOR = 1.5
 DEFAULT_OBJETO = "Radicula"
 DEFAULT_MEDIDA = "Largo_cm"
+DEFAULT_EXPERIMENTS_DIR = "./data/experiments"
 
 
 class TextWidgetWriter(io.StringIO):
@@ -52,7 +53,7 @@ class PipelineGUI(tk.Tk):
         self.medida_var = tk.StringVar(value=DEFAULT_MEDIDA)
         self.calibracion_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Abriendo interfaz...")
-        self.base_dir_var = tk.StringVar(value="Origen actual: ./Experimentos")
+        self.base_dir_var = tk.StringVar(value=f"Origen actual: {DEFAULT_EXPERIMENTS_DIR}")
         self.action_buttons = []
 
         self._configure_styles()
@@ -249,7 +250,7 @@ class PipelineGUI(tk.Tk):
         )
         ttk.Label(
             frame,
-            text="Analizar ejecuta el procesamiento de fotos y luego limpia outliers automáticamente.",
+            text="Analizar procesa las fotos y guarda root_lengths.csv en processed/ para cada experimento.",
             style="Muted.TLabel",
         ).grid(row=1, column=0, sticky="w", pady=(4, 16))
 
@@ -321,7 +322,7 @@ class PipelineGUI(tk.Tk):
 
     def get_base_directory(self):
         base_dir = self.base_dir_var.get().replace("Origen actual: ", "", 1).strip()
-        return base_dir or "./Experimentos"
+        return base_dir or DEFAULT_EXPERIMENTS_DIR
 
     def is_valid_experiment_folder(self, folder_name):
         try:
@@ -342,7 +343,7 @@ class PipelineGUI(tk.Tk):
         return {
             "experiment_dir": experiment_dir,
             "output_dir": output_dir,
-            "archivo_detallado": output_dir / "resultados_detallados_calibrados.csv",
+            "archivo_detallado": output_dir / "root_lengths.csv",
             "archivo_limpio": output_dir / "resultados_limpios.csv",
             "carpeta_testigos": output_dir / "procesadas_debug",
             "archivo_config": output_dir / "parametros_calibracion.json",
@@ -449,13 +450,6 @@ class PipelineGUI(tk.Tk):
             return
 
         analizar = self.get_module("Analizar")
-        limpiar = self.get_module("Limpiar")
-
-        try:
-            factor_iqr = self.parse_iqr()
-        except ValueError as exc:
-            messagebox.showerror("Factor IQR inválido", str(exc))
-            return
 
         def procesar_seleccion():
             for carpeta in carpetas:
@@ -476,14 +470,8 @@ class PipelineGUI(tk.Tk):
                     print(f"[ALERTA] Se omitió {carpeta} porque no generó resultados analizables.")
                     continue
 
-                limpiar.limpiar_datos(
-                    archivo_entrada=str(rutas["archivo_detallado"]),
-                    archivo_salida=str(rutas["archivo_limpio"]),
-                    factor_iqr=factor_iqr,
-                )
-
         self.execute_with_log(
-            "Analizar y limpiar outliers",
+            "Analizar fotos",
             procesar_seleccion,
         )
 

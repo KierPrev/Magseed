@@ -215,3 +215,17 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 **/.DS_Store
+
+# Image files
+*.avif
+*.bmp
+*.gif
+*.heic
+*.heif
+*.jpeg
+*.jpg
+*.png
+*.tif
+*.tiff
+*.webp
+

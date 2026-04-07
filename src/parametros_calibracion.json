@@ -1,10 +1,15 @@
 {
-    "blur_k": 0,
-    "seed_thresh": 50,
+    "blur_k": 1,
     "clean_k": 0,
-    "seed_glue": 7,
-    "root_bridge": 0,
-    "min_area_root": 4,
+    "seed_glue": 5,
+    "seed_h_max": 31,
+    "seed_s_min": 75,
+    "seed_v_min": 65,
+    "root_s_max": 73,
+    "root_v_min": 154,
+    "min_area_seed": 55,
+    "root_bridge": 1,
+    "min_area_root": 10,
     "hsv_h_min": 0,
     "hsv_h_max": 40
 }

@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620">
+<style>
+text { font-family: Arial, sans-serif; fill: #222; }
+.title { font-size: 24px; font-weight: 700; }
+.label { font-size: 16px; }
+.tick { font-size: 11px; fill: #444; }
+.legend { font-size: 14px; }
+</style>
+<rect x="0" y="0" width="1200" height="620" fill="white"/>
+<line x1="90" y1="525.00" x2="1170" y2="525.00" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="529.00" text-anchor="end">0</text>
+<line x1="90" y1="487.08" x2="1170" y2="487.08" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="491.08" text-anchor="end">1</text>
+<line x1="90" y1="449.17" x2="1170" y2="449.17" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="453.17" text-anchor="end">2</text>
+<line x1="90" y1="411.25" x2="1170" y2="411.25" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="415.25" text-anchor="end">3</text>
+<line x1="90" y1="373.33" x2="1170" y2="373.33" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="377.33" text-anchor="end">4</text>
+<line x1="90" y1="335.42" x2="1170" y2="335.42" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="339.42" text-anchor="end">5</text>
+<line x1="90" y1="297.50" x2="1170" y2="297.50" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="301.50" text-anchor="end">6</text>
+<line x1="90" y1="259.58" x2="1170" y2="259.58" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="263.58" text-anchor="end">7</text>
+<line x1="90" y1="221.67" x2="1170" y2="221.67" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="225.67" text-anchor="end">8</text>
+<line x1="90" y1="183.75" x2="1170" y2="183.75" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="187.75" text-anchor="end">9</text>
+<line x1="90" y1="145.83" x2="1170" y2="145.83" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="149.83" text-anchor="end">10</text>
+<line x1="90" y1="107.92" x2="1170" y2="107.92" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="111.92" text-anchor="end">11</text>
+<line x1="90" y1="70.00" x2="1170" y2="70.00" stroke="#e6e6e6" stroke-width="1"/>
+<text class="tick" x="80" y="74.00" text-anchor="end">12</text>
+<line x1="90" y1="70" x2="90" y2="525" stroke="#333" stroke-width="2"/>
+<line x1="90" y1="525" x2="1170" y2="525" stroke="#333" stroke-width="2"/>
+<rect x="96.08" y="259.58" width="55.35" height="265.42" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="96.08" y="525.00" width="55.35" height="0.00" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="123.75" y="547" text-anchor="middle">3.34</text>
+<rect x="163.57" y="183.75" width="55.35" height="341.25" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="163.57" y="525.00" width="55.35" height="0.00" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="191.25" y="547" text-anchor="middle">3.53</text>
+<rect x="231.07" y="145.83" width="55.35" height="379.17" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="231.07" y="525.00" width="55.35" height="0.00" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="258.75" y="547" text-anchor="middle">3.71</text>
+<rect x="298.57" y="487.08" width="55.35" height="37.92" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="298.57" y="525.00" width="55.35" height="0.00" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="326.25" y="547" text-anchor="middle">3.90</text>
+<rect x="366.07" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="366.07" y="525.00" width="55.35" height="0.00" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="393.75" y="547" text-anchor="middle">4.09</text>
+<rect x="433.57" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="433.57" y="525.00" width="55.35" height="0.00" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="461.25" y="547" text-anchor="middle">4.27</text>
+<rect x="501.07" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="501.07" y="525.00" width="55.35" height="0.00" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="528.75" y="547" text-anchor="middle">4.46</text>
+<rect x="568.58" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="568.58" y="525.00" width="55.35" height="0.00" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="596.25" y="547" text-anchor="middle">4.64</text>
+<rect x="636.08" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="636.08" y="525.00" width="55.35" height="0.00" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="663.75" y="547" text-anchor="middle">4.83</text>
+<rect x="703.58" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="703.58" y="487.08" width="55.35" height="37.92" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="731.25" y="547" text-anchor="middle">5.01</text>
+<rect x="771.08" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="771.08" y="487.08" width="55.35" height="37.92" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="798.75" y="547" text-anchor="middle">5.20</text>
+<rect x="838.58" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="838.58" y="297.50" width="55.35" height="227.50" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="866.25" y="547" text-anchor="middle">5.38</text>
+<rect x="906.08" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="906.08" y="373.33" width="55.35" height="151.67" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="933.75" y="547" text-anchor="middle">5.57</text>
+<rect x="973.58" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="973.58" y="70.00" width="55.35" height="455.00" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="1001.25" y="547" text-anchor="middle">5.75</text>
+<rect x="1041.08" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="1041.08" y="449.17" width="55.35" height="75.83" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="1068.75" y="547" text-anchor="middle">5.94</text>
+<rect x="1108.58" y="525.00" width="55.35" height="0.00" fill="#1f77b4" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<rect x="1108.58" y="487.08" width="55.35" height="37.92" fill="#ff7f0e" fill-opacity="0.55" stroke="white" stroke-width="0.8"/>
+<text class="tick" x="1170.00" y="547" text-anchor="end">6.31</text>
+<text class="title" x="600.0" y="40" text-anchor="middle">Histograma de pre_weight y post_weight</text>
+<text class="label" x="600.0" y="596" text-anchor="middle">Peso</text>
+<text class="label" x="28" y="310.0" text-anchor="middle" transform="rotate(-90 28 310.0)">Frecuencia</text>
+<rect x="950" y="25" width="18" height="18" fill="#1f77b4" fill-opacity="0.55" stroke="#1f77b4"/>
+<text class="legend" x="978" y="39">pre_weight</text>
+<rect x="1060" y="25" width="18" height="18" fill="#ff7f0e" fill-opacity="0.55" stroke="#ff7f0e"/>
+<text class="legend" x="1088" y="39">post_weight</text>
+</svg>

@@ -1,3 +1,5 @@
+### TODO: Esto es solo provisorio, despues hay que analizar bien que poner
+
 import io
 import os
 import subprocess
@@ -47,9 +49,7 @@ class AnalisisTrayGUI(tk.Tk):
         self.minsize(1024, 720)
         self.configure(bg=BG_COLOR)
 
-        self.status_var = tk.StringVar(
-            value="Listo para analizar trays.csv."
-        )
+        self.status_var = tk.StringVar(value="Listo para analizar trays.csv.")
         self.base_dir_var = tk.StringVar(
             value=f"Experimentos: {AnalisisTrays.EXPERIMENTS_DIR}"
         )
@@ -429,7 +429,9 @@ class AnalisisTrayGUI(tk.Tk):
             self.experiment_list.activate(indice)
             self.experiment_list.see(indice)
             self.selected_exp_var.set(f"Experimento seleccionado: {objetivo}")
-            self.status_var.set(f"{len(experimentos)} experimentos listos para analizar.")
+            self.status_var.set(
+                f"{len(experimentos)} experimentos listos para analizar."
+            )
         else:
             self.selected_exp_var.set("Experimento seleccionado: -")
             self.status_var.set("No se encontraron trays.csv en data/experiments.")
@@ -529,7 +531,9 @@ class AnalisisTrayGUI(tk.Tk):
                         "  Magnetic vs control: "
                         f"delta p={resumen['magnetic_vs_control_delta_p_value']:.6g}, "
                         f"pct_change p={resumen['magnetic_vs_control_pct_p_value']:.6g}"
-                        if not self._es_nan(resumen["magnetic_vs_control_delta_p_value"])
+                        if not self._es_nan(
+                            resumen["magnetic_vs_control_delta_p_value"]
+                        )
                         or not self._es_nan(resumen["magnetic_vs_control_pct_p_value"])
                         else "  Magnetic vs control: no disponible"
                     ),
