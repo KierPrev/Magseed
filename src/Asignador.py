@@ -1,12 +1,21 @@
 import csv
 import re
+import sys
 from typing import Optional, Union
 from datetime import date, datetime
 from pathlib import Path
 import random
 import shutil
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+
+def obtener_base_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+
+    return Path(__file__).resolve().parent.parent
+
+
+BASE_DIR = obtener_base_dir()
 EXPERIMENTS_DIR = BASE_DIR / "data" / "experiments"
 TRAYS_FILENAME = "trays.csv"
 METADATA_FILENAME = "experiments_metadata.csv"
