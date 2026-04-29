@@ -22,6 +22,8 @@ SORT_LABELS = {
     "Piso de tratamiento (1, 1, 1, 2...)": SORT_BY_TREATMENT,
 }
 DEFAULT_SORT_LABEL = "Posición (A1, A2, A3...)"
+MAX_TREATMENT_FLOORS = 99
+MAX_REPLICAS = 26
 
 
 class AsignadorGUI(tk.Tk):
@@ -35,14 +37,22 @@ class AsignadorGUI(tk.Tk):
 
         self.current_data = []
         self.selected_position = ""
-        self.position_cells = {}
-        self.floor_cells = {}
+        self.tray_cells = {}
         self.treatment_floor_cell = None
+        self.location_panel_host = None
+        self.loaded_config = None
+        self.current_location_layout = None
 
         hoy = date.today().strftime("%Y%m%d")
         self.exp_id_var = tk.StringVar(value=hoy)
         self.magnet_var = tk.StringVar()
         self.magnet_pole_var = tk.StringVar(value="NONE")
+        self.treatment_floors_var = tk.StringVar(
+            value=str(Asignador.DEFAULT_TREATMENT_FLOORS)
+        )
+        self.replicas_var = tk.StringVar(value=str(Asignador.DEFAULT_REPLICAS))
+        self.total_trays_var = tk.StringVar(value="-")
+        self.range_var = tk.StringVar(value="-")
         self.position_var = tk.StringVar()
         self.suggestion_var = tk.StringVar(value="-")
         self.current_tray_var = tk.StringVar(value="-")
@@ -58,6 +68,9 @@ class AsignadorGUI(tk.Tk):
 
         self._configure_styles()
         self._build_layout()
+        self.treatment_floors_var.trace_add("write", self._on_tray_config_changed)
+        self.replicas_var.trace_add("write", self._on_tray_config_changed)
+        self._on_tray_config_changed()
 
     def _configure_styles(self):
         style = ttk.Style(self)
@@ -231,23 +244,54 @@ class AsignadorGUI(tk.Tk):
             command=self._use_today,
         ).grid(row=2, column=2, sticky="ew", padx=(8, 0), pady=(0, 8))
 
+        ttk.Label(frame, text="Treatment floors", style="Body.TLabel").grid(
+            row=3, column=0, sticky="w", pady=(4, 8)
+        )
+        ttk.Spinbox(
+            frame,
+            from_=1,
+            to=MAX_TREATMENT_FLOORS,
+            textvariable=self.treatment_floors_var,
+            font=("Helvetica", 11),
+            width=10,
+        ).grid(row=3, column=1, sticky="w", pady=(4, 8))
+
+        ttk.Label(frame, text="Réplicas", style="Body.TLabel").grid(
+            row=4, column=0, sticky="w", pady=(0, 8)
+        )
+        ttk.Spinbox(
+            frame,
+            from_=1,
+            to=MAX_REPLICAS,
+            textvariable=self.replicas_var,
+            font=("Helvetica", 11),
+            width=10,
+        ).grid(row=4, column=1, sticky="w", pady=(0, 8))
+
+        summary = ttk.Frame(frame, style="Card.TFrame")
+        summary.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        summary.columnconfigure(0, weight=1)
+        summary.columnconfigure(1, weight=1)
+        self._build_info_field(summary, 0, 0, "Total de bandejas", self.total_trays_var)
+        self._build_info_field(summary, 0, 1, "Rango esperado", self.range_var)
+
         ttk.Button(
             frame,
             text="Crear trays.csv",
             command=self._create_trays,
-        ).grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        ).grid(row=6, column=0, sticky="ew", pady=(12, 0))
         ttk.Button(
             frame,
             text="Cargar bandejas",
             style="Secondary.TButton",
             command=self._load_experiment,
-        ).grid(row=3, column=1, sticky="ew", padx=(8, 8), pady=(8, 0))
+        ).grid(row=6, column=1, sticky="ew", padx=(8, 8), pady=(12, 0))
         ttk.Button(
             frame,
             text="Refrescar",
             style="Secondary.TButton",
             command=self._refresh_current_experiment,
-        ).grid(row=3, column=2, sticky="ew", pady=(8, 0))
+        ).grid(row=6, column=2, sticky="ew", pady=(12, 0))
 
         return frame
 
@@ -505,11 +549,13 @@ class AsignadorGUI(tk.Tk):
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
         self.tree.bind("<Double-1>", self._open_edit_dialog)
 
-        self._build_location_panel(content).grid(row=0, column=1, sticky="nsew")
+        self.location_panel_host = ttk.Frame(content, style="Card.TFrame")
+        self.location_panel_host.grid(row=0, column=1, sticky="nsew")
+        self._refresh_location_panel(force=True)
 
         return frame
 
-    def _build_location_panel(self, parent):
+    def _build_location_panel(self, parent, cantidad_treatment_floors, cantidad_replicas):
         frame = ttk.Frame(parent, padding=18, style="Card.TFrame")
         frame.columnconfigure(0, weight=1)
 
@@ -524,52 +570,64 @@ class AsignadorGUI(tk.Tk):
 
         visual = ttk.Frame(frame, style="Card.TFrame")
         visual.grid(row=2, column=0, sticky="n")
-        visual.columnconfigure(0, weight=1)
         visual.columnconfigure(1, weight=0)
-        visual.columnconfigure(2, weight=0)
 
-        positions_frame = ttk.Frame(visual, style="Card.TFrame")
-        positions_frame.grid(row=0, column=0, sticky="n")
+        grid_frame = ttk.Frame(visual, style="Card.TFrame")
+        grid_frame.grid(row=0, column=0, sticky="n")
 
-        for row in range(3):
-            positions_frame.rowconfigure(row, weight=1)
-            positions_frame.columnconfigure(row, weight=1)
-            for column in range(3):
-                number = row * 3 + column + 1
+        self.tray_cells = {}
+        floors = Asignador.generar_floors(cantidad_replicas)
+        font_size = 13 if cantidad_treatment_floors <= 9 else 11
+        cell_width = 5 if cantidad_treatment_floors <= 9 else 4
+
+        header_font = ("Helvetica", max(font_size - 1, 9), "bold")
+        cell_font = ("Helvetica", font_size, "bold")
+
+        tk.Label(
+            grid_frame,
+            text="",
+            bg=CARD_COLOR,
+            fg=TEXT_COLOR,
+            font=header_font,
+        ).grid(row=0, column=0, padx=4, pady=4)
+
+        for column in range(1, cantidad_treatment_floors + 1):
+            tk.Label(
+                grid_frame,
+                text=str(column),
+                bg=CARD_COLOR,
+                fg=MUTED_COLOR,
+                font=header_font,
+            ).grid(row=0, column=column, padx=4, pady=4)
+
+        for row, floor in enumerate(floors, start=1):
+            tk.Label(
+                grid_frame,
+                text=floor,
+                width=3,
+                bg=CARD_COLOR,
+                fg=MUTED_COLOR,
+                font=header_font,
+            ).grid(row=row, column=0, padx=4, pady=4, sticky="e")
+
+            for position in range(1, cantidad_treatment_floors + 1):
+                pos = f"{floor}{position}"
                 cell = tk.Label(
-                    positions_frame,
-                    text=str(number),
-                    width=4,
+                    grid_frame,
+                    text=pos,
+                    width=cell_width,
                     height=2,
                     bg=PANEL_COLOR,
                     fg=TEXT_COLOR,
-                    font=("Helvetica", 16, "bold"),
+                    font=cell_font,
                     relief="solid",
                     bd=1,
                 )
-                cell.grid(row=row, column=column, padx=4, pady=4, sticky="nsew")
-                self.position_cells[number] = cell
-
-        floors_frame = ttk.Frame(visual, style="Card.TFrame")
-        floors_frame.grid(row=0, column=1, sticky="ns", padx=(12, 0))
-
-        for row, floor in enumerate(["C", "B", "A"]):
-            cell = tk.Label(
-                floors_frame,
-                text=floor,
-                width=3,
-                height=2,
-                bg=PANEL_COLOR,
-                fg=TEXT_COLOR,
-                font=("Helvetica", 16, "bold"),
-                relief="solid",
-                bd=1,
-            )
-            cell.grid(row=row, column=0, padx=4, pady=4, sticky="nsew")
-            self.floor_cells[floor] = cell
+                cell.grid(row=row, column=position, padx=4, pady=4, sticky="nsew")
+                self.tray_cells[pos] = cell
 
         treatment_frame = ttk.Frame(visual, style="Card.TFrame")
-        treatment_frame.grid(row=0, column=2, sticky="n", padx=(12, 0))
+        treatment_frame.grid(row=0, column=1, sticky="n", padx=(14, 0))
 
         ttk.Label(treatment_frame, text="Piso", style="Body.TLabel").grid(
             row=0, column=0, sticky="w", pady=(0, 6)
@@ -604,6 +662,86 @@ class AsignadorGUI(tk.Tk):
     def _use_today(self):
         self.exp_id_var.set(date.today().strftime("%Y%m%d"))
 
+    def _safe_get_tray_config(self):
+        try:
+            treatment_floors = Asignador.validar_cantidad(
+                "treatment floors", self.treatment_floors_var.get()
+            )
+            replicas = Asignador.validar_cantidad(
+                "réplicas", self.replicas_var.get()
+            )
+        except ValueError:
+            return None
+
+        return treatment_floors, replicas
+
+    def _get_tray_config(self) -> tuple[int, int]:
+        treatment_floors = Asignador.validar_cantidad(
+            "treatment floors", self.treatment_floors_var.get()
+        )
+        replicas = Asignador.validar_cantidad("réplicas", self.replicas_var.get())
+        self.treatment_floors_var.set(str(treatment_floors))
+        self.replicas_var.set(str(replicas))
+        return treatment_floors, replicas
+
+    def _set_tray_config(self, treatment_floors: int, replicas: int):
+        if self.treatment_floors_var.get() != str(treatment_floors):
+            self.treatment_floors_var.set(str(treatment_floors))
+        if self.replicas_var.get() != str(replicas):
+            self.replicas_var.set(str(replicas))
+
+    def _refresh_tray_config_preview(self):
+        config = self._safe_get_tray_config()
+        if config is None:
+            self.total_trays_var.set("-")
+            self.range_var.set("-")
+            return
+
+        treatment_floors, replicas = config
+        posiciones = Asignador.generar_posiciones(treatment_floors, replicas)
+        self.total_trays_var.set(str(treatment_floors * replicas))
+        self.range_var.set(
+            f"{posiciones[0][0]}{posiciones[0][1]} a {posiciones[-1][0]}{posiciones[-1][1]}"
+        )
+
+    def _active_location_config(self):
+        if self.loaded_config is not None:
+            return (
+                self.loaded_config["cantidad_treatment_floors"],
+                self.loaded_config["cantidad_replicas"],
+            )
+
+        return self._safe_get_tray_config()
+
+    def _refresh_location_panel(self, force=False):
+        if self.location_panel_host is None:
+            return
+
+        config = self._active_location_config()
+        if config is None:
+            return
+
+        if not force and self.current_location_layout == config:
+            return
+
+        for child in self.location_panel_host.winfo_children():
+            child.destroy()
+
+        self.current_location_layout = config
+        panel = self._build_location_panel(
+            self.location_panel_host,
+            cantidad_treatment_floors=config[0],
+            cantidad_replicas=config[1],
+        )
+        panel.grid(row=0, column=0, sticky="nsew")
+        self._update_visual_position(self.selected_position or None, self.current_treatment_var.get())
+
+    def _on_tray_config_changed(self, *_args):
+        self._refresh_tray_config_preview()
+        if not self.current_data:
+            self.loaded_config = None
+            self._refresh_location_panel(force=True)
+
     def _get_exp_id(self) -> str:
         exp_id = self.exp_id_var.get().strip()
         if exp_id == "":
@@ -616,7 +754,12 @@ class AsignadorGUI(tk.Tk):
     def _create_trays(self):
         try:
             exp_id = self._get_exp_id()
-            archivo = Asignador.crear_trays_csv_para_experimento(exp_id)
+            treatment_floors, replicas = self._get_tray_config()
+            archivo = Asignador.crear_trays_csv_para_experimento(
+                exp_id,
+                cantidad_treatment_floors=treatment_floors,
+                cantidad_replicas=replicas,
+            )
             self._set_status(f"Se creó {archivo}.")
             self._load_experiment()
         except Exception as exc:
@@ -639,15 +782,32 @@ class AsignadorGUI(tk.Tk):
             exp_id = self._get_exp_id()
             estado = Asignador.obtener_estado_experimento(exp_id)
             self.current_data = estado["datos"]
+            self.loaded_config = estado["configuracion"]
+            self._set_tray_config(
+                self.loaded_config["cantidad_treatment_floors"],
+                self.loaded_config["cantidad_replicas"],
+            )
+            self._refresh_location_panel(force=True)
             self._populate_tree()
 
             sugerida = estado["siguiente_posicion"]
             self.suggestion_var.set(sugerida)
+            posicion_actual = self.position_var.get().strip()
+            posiciones_validas = Asignador.obtener_posiciones_validas(self.current_data)
 
-            if not self.position_var.get().strip():
+            try:
+                if posicion_actual:
+                    Asignador.validar_posicion(
+                        posicion_actual,
+                        posiciones_validas=posiciones_validas,
+                    )
+                else:
+                    raise ValueError
+            except ValueError:
+                posicion_actual = sugerida
                 self.position_var.set(sugerida)
 
-            self._sync_position_details(self.position_var.get().strip() or sugerida)
+            self._sync_position_details(posicion_actual)
             self._set_status(f"Experimento {exp_id} cargado correctamente.")
         except Exception as exc:
             self._show_error(str(exc))
@@ -656,7 +816,7 @@ class AsignadorGUI(tk.Tk):
         self._load_experiment()
 
     def _floor_sort_key(self, floor: str) -> int:
-        return ["A", "B", "C"].index(floor)
+        return Asignador.indice_floor(floor)
 
     def _sorted_current_data(self):
         sort_mode = SORT_LABELS.get(self.sort_var.get(), SORT_BY_POSITION)
@@ -747,7 +907,15 @@ class AsignadorGUI(tk.Tk):
             return
 
         try:
-            floor, number = Asignador.validar_posicion(posicion)
+            posiciones_validas = (
+                Asignador.obtener_posiciones_validas(self.current_data)
+                if self.current_data
+                else None
+            )
+            floor, number = Asignador.validar_posicion(
+                posicion,
+                posiciones_validas=posiciones_validas,
+            )
         except ValueError:
             self._clear_current_details()
             if not silent:
@@ -788,29 +956,27 @@ class AsignadorGUI(tk.Tk):
         self.current_post_var.set("-")
 
     def _update_visual_position(self, posicion, treatment_floor=None):
-        active_floor = None
-        active_number = None
+        posicion_activa = None
 
         if posicion:
             try:
-                active_floor, active_number = Asignador.validar_posicion(posicion)
+                posiciones_validas = (
+                    Asignador.obtener_posiciones_validas(self.current_data)
+                    if self.current_data
+                    else None
+                )
+                floor, number = Asignador.validar_posicion(
+                    posicion,
+                    posiciones_validas=posiciones_validas,
+                )
+                posicion_activa = f"{floor}{number}"
             except ValueError:
-                active_floor = None
-                active_number = None
+                posicion_activa = None
 
-        for number, cell in self.position_cells.items():
-            is_active = number == active_number
+        for pos, cell in self.tray_cells.items():
+            is_active = pos == posicion_activa
             cell.configure(
                 bg=POSITION_HIGHLIGHT if is_active else PANEL_COLOR,
-                fg="white" if is_active else TEXT_COLOR,
-                bd=2 if is_active else 1,
-                highlightthickness=0,
-            )
-
-        for floor, cell in self.floor_cells.items():
-            is_active = floor == active_floor
-            cell.configure(
-                bg=ACCENT_COLOR if is_active else PANEL_COLOR,
                 fg="white" if is_active else TEXT_COLOR,
                 bd=2 if is_active else 1,
                 highlightthickness=0,
@@ -826,13 +992,20 @@ class AsignadorGUI(tk.Tk):
             )
 
     def _open_edit_dialog(self, _event=None):
+        if not self.current_data:
+            self._show_error("Primero cargá un experimento con bandejas.")
+            return
+
         posicion = self.position_var.get().strip() or self.selected_position
         if not posicion:
             self._show_error("Primero seleccioná una bandeja.")
             return
 
         try:
-            floor, number = Asignador.validar_posicion(posicion)
+            floor, number = Asignador.validar_posicion(
+                posicion,
+                posiciones_validas=Asignador.obtener_posiciones_validas(self.current_data),
+            )
         except ValueError as exc:
             self._show_error(str(exc))
             return

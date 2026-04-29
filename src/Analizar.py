@@ -195,7 +195,10 @@ def leer_imagen(ruta_imagen):
     if ruta.suffix.lower() in HEIC_SUFFIXES:
         cache_ruta = obtener_ruta_cache_imagen(ruta)
         try:
-            if cache_ruta.exists() and cache_ruta.stat().st_mtime >= ruta.stat().st_mtime:
+            if (
+                cache_ruta.exists()
+                and cache_ruta.stat().st_mtime >= ruta.stat().st_mtime
+            ):
                 img_cache = cargar_imagen_cache(cache_ruta)
                 if img_cache is not None:
                     return img_cache
@@ -255,7 +258,9 @@ def redimensionar_para_analisis(img, max_dim=MAX_DIM_ANALISIS):
         return img
 
     escala = max_dim / float(mayor)
-    return cv2.resize(img, (int(w * escala), int(h * escala)), interpolation=cv2.INTER_AREA)
+    return cv2.resize(
+        img, (int(w * escala), int(h * escala)), interpolation=cv2.INTER_AREA
+    )
 
 
 def obtener_largo_esqueleto(img_binaria_radicula):
@@ -443,7 +448,11 @@ def generar_variantes_qr(img):
         for escala in escalas:
             variantes_escaladas.append(
                 cv2.resize(
-                    variante, (0, 0), fx=escala, fy=escala, interpolation=cv2.INTER_CUBIC
+                    variante,
+                    (0, 0),
+                    fx=escala,
+                    fy=escala,
+                    interpolation=cv2.INTER_CUBIC,
                 )
             )
 
@@ -482,7 +491,9 @@ def leer_textos_qr(candidata, detector):
             resultados = zxingcpp.read_barcodes(
                 candidata, formats=zxingcpp.BarcodeFormat.QRCode
             )
-            textos.extend([resultado.text for resultado in resultados if resultado.text])
+            textos.extend(
+                [resultado.text for resultado in resultados if resultado.text]
+            )
         except Exception:
             pass
 
@@ -523,8 +534,8 @@ def detectar_qr_rapido(region, detector):
                 puntos = None
 
             try:
-                detectado_multi, textos_multi, puntos_multi, _ = detector.detectAndDecodeMulti(
-                    candidata
+                detectado_multi, textos_multi, puntos_multi, _ = (
+                    detector.detectAndDecodeMulti(candidata)
                 )
                 if detectado_multi and textos_multi:
                     for texto_candidato in textos_multi:
@@ -934,7 +945,9 @@ def abrir_panel_calibracion(ruta_primera_imagen, archivo_config=ARCHIVO_CONFIG):
 
     img_raw = leer_imagen(ruta_primera_imagen)
     if img_raw is None:
-        print(f"[ALERTA] No se pudo leer la imagen para calibración: {ruta_primera_imagen}")
+        print(
+            f"[ALERTA] No se pudo leer la imagen para calibración: {ruta_primera_imagen}"
+        )
         return
 
     img_raw = redimensionar_para_analisis(img_raw)
@@ -1042,7 +1055,7 @@ def seleccionar_carpetas(directorio_raiz):
     try:
         idxs = [int(x) - 1 for x in sel.split(",")]
         return [todas[i] for i in idxs if 0 <= i < len(todas)]
-    except:
+    except (ValueError, IndexError):
         return []
 
 
@@ -1270,7 +1283,9 @@ def procesar_carpetas(
                 continue
 
             if tray_id is None:
-                print(f"[ALERTA] No se pudo leer un QR válido en {nombre_archivo}. Se omite.")
+                print(
+                    f"[ALERTA] No se pudo leer un QR válido en {nombre_archivo}. Se omite."
+                )
                 fotos_sin_qr.append(nombre_archivo)
 
             if res["img_debug"] is not None:
@@ -1323,7 +1338,9 @@ def procesar_carpetas(
                     os.path.join(carpeta_testigos_exp, nombre_unico), res["img_debug"]
                 )
 
-        archivo_salida_exp = resolver_archivo_salida_exp(ruta_experimento, archivo_salida)
+        archivo_salida_exp = resolver_archivo_salida_exp(
+            ruta_experimento, archivo_salida
+        )
         carpeta_salida = os.path.dirname(archivo_salida_exp)
         if carpeta_salida:
             os.makedirs(carpeta_salida, exist_ok=True)
@@ -1335,7 +1352,9 @@ def procesar_carpetas(
         imprimir_resumen_outliers(df_outliers, umbral_outliers, prefijo="  ")
 
         filas_csv_limpias = df_limpio.to_dict("records")
-        resumen_exp = calcular_resumen_mediciones(filas_csv_limpias, semillas_detectadas_exp)
+        resumen_exp = calcular_resumen_mediciones(
+            filas_csv_limpias, semillas_detectadas_exp
+        )
         print("Resumen del experimento:")
         imprimir_resumen_mediciones(resumen_exp, prefijo="  ")
 
@@ -1371,7 +1390,9 @@ def procesar_carpetas(
         return None
 
     filas_totales = sum(r["cantidad_filas"] for r in resultados)
-    resumen_global = calcular_resumen_mediciones(filas_csv_global, total_semillas_global)
+    resumen_global = calcular_resumen_mediciones(
+        filas_csv_global, total_semillas_global
+    )
     print("\nResumen global:")
     imprimir_resumen_mediciones(resumen_global, prefijo="  ")
 

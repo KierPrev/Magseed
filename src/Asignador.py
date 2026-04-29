@@ -1,4 +1,5 @@
 import csv
+import re
 from typing import Optional, Union
 from datetime import date, datetime
 from pathlib import Path
@@ -9,6 +10,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 EXPERIMENTS_DIR = BASE_DIR / "data" / "experiments"
 TRAYS_FILENAME = "trays.csv"
 METADATA_FILENAME = "experiments_metadata.csv"
+DEFAULT_TREATMENT_FLOORS = 9
+DEFAULT_REPLICAS = 3
 FIELDNAMES = [
     "tray_id",
     "exp_id",
@@ -71,18 +74,75 @@ def ruta_metadata() -> Path:
     return BASE_DIR / "data" / METADATA_FILENAME
 
 
-def generar_posiciones() -> list[tuple[str, int]]:
+def validar_cantidad(nombre: str, valor: Union[str, int]) -> int:
+    try:
+        cantidad = int(valor)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"La cantidad de {nombre} debe ser un número entero.") from exc
+
+    if cantidad <= 0:
+        raise ValueError(f"La cantidad de {nombre} debe ser mayor que cero.")
+
+    return cantidad
+
+
+def floor_desde_indice(indice: int) -> str:
+    if indice < 0:
+        raise ValueError("El índice del floor no puede ser negativo.")
+
+    etiqueta = ""
+    indice_actual = indice
+
+    while True:
+        indice_actual, resto = divmod(indice_actual, 26)
+        etiqueta = chr(ord("A") + resto) + etiqueta
+        if indice_actual == 0:
+            return etiqueta
+        indice_actual -= 1
+
+
+def indice_floor(floor: str) -> int:
+    etiqueta = floor.strip().upper()
+    if not etiqueta.isalpha():
+        raise ValueError(f"Floor inválido: '{floor}'.")
+
+    indice = 0
+    for caracter in etiqueta:
+        indice = indice * 26 + (ord(caracter) - ord("A") + 1)
+    return indice - 1
+
+
+def generar_floors(cantidad_replicas: int = DEFAULT_REPLICAS) -> list[str]:
+    replicas = validar_cantidad("réplicas", cantidad_replicas)
+    return [floor_desde_indice(indice) for indice in range(replicas)]
+
+
+def generar_posiciones(
+    cantidad_treatment_floors: int = DEFAULT_TREATMENT_FLOORS,
+    cantidad_replicas: int = DEFAULT_REPLICAS,
+) -> list[tuple[str, int]]:
+    treatment_floors = validar_cantidad(
+        "treatment floors", cantidad_treatment_floors
+    )
+    replicas = validar_cantidad("réplicas", cantidad_replicas)
     posiciones = []
-    for floor in ["A", "B", "C"]:
-        for position in range(1, 10):
+    for floor in generar_floors(replicas):
+        for position in range(1, treatment_floors + 1):
             posiciones.append((floor, position))
     return posiciones
 
 
-def generar_treatment_floors() -> list[int]:
+def generar_treatment_floors(
+    cantidad_treatment_floors: int = DEFAULT_TREATMENT_FLOORS,
+    cantidad_replicas: int = DEFAULT_REPLICAS,
+) -> list[int]:
+    treatment_floors_count = validar_cantidad(
+        "treatment floors", cantidad_treatment_floors
+    )
+    replicas = validar_cantidad("réplicas", cantidad_replicas)
     treatment_floors = []
-    for treatment_floor in range(1, 10):
-        treatment_floors.extend([treatment_floor] * 3)
+    for treatment_floor in range(1, treatment_floors_count + 1):
+        treatment_floors.extend([treatment_floor] * replicas)
     return treatment_floors
 
 
@@ -245,17 +305,25 @@ def copiar_fotos_a_experimento(exp_id: str, fotos: list[Union[str, Path]]) -> li
     return copiados
 
 
-def crear_trays_csv_para_experimento(exp_id: str) -> Path:
+def crear_trays_csv_para_experimento(
+    exp_id: str,
+    cantidad_treatment_floors: int = DEFAULT_TREATMENT_FLOORS,
+    cantidad_replicas: int = DEFAULT_REPLICAS,
+) -> Path:
     exp_id = validar_exp_id(exp_id)
+    treatment_floors_count = validar_cantidad(
+        "treatment floors", cantidad_treatment_floors
+    )
+    replicas = validar_cantidad("réplicas", cantidad_replicas)
     crear_estructura_experimento(exp_id)
     archivo = ruta_trays(exp_id)
 
     if archivo.exists():
         raise FileExistsError(f"El archivo '{archivo}' ya existe.")
 
-    posiciones = generar_posiciones()
+    posiciones = generar_posiciones(treatment_floors_count, replicas)
 
-    treatment_floors = generar_treatment_floors()
+    treatment_floors = generar_treatment_floors(treatment_floors_count, replicas)
     random.shuffle(treatment_floors)
 
     with open(archivo, "w", newline="", encoding="utf-8") as f:
@@ -279,9 +347,17 @@ def crear_trays_csv_para_experimento(exp_id: str) -> Path:
     return archivo
 
 
-def crear_trays_csv(exp_id: str):
+def crear_trays_csv(
+    exp_id: str,
+    cantidad_treatment_floors: int = DEFAULT_TREATMENT_FLOORS,
+    cantidad_replicas: int = DEFAULT_REPLICAS,
+):
     try:
-        archivo = crear_trays_csv_para_experimento(exp_id)
+        archivo = crear_trays_csv_para_experimento(
+            exp_id,
+            cantidad_treatment_floors=cantidad_treatment_floors,
+            cantidad_replicas=cantidad_replicas,
+        )
     except (ValueError, FileExistsError) as exc:
         print(f"{exc}\n")
         return None
@@ -308,7 +384,10 @@ def guardar_datos(exp_id: str, datos):
 
 
 def ordenar_datos(datos):
-    return sorted(datos, key=lambda fila: (fila["floor"], int(fila["position"])))
+    return sorted(
+        datos,
+        key=lambda fila: (indice_floor(fila["floor"]), int(fila["position"])),
+    )
 
 
 def mostrar_bandejas(datos):
@@ -327,25 +406,70 @@ def mostrar_bandejas(datos):
     print()
 
 
-def posiciones_en_orden() -> list[tuple[str, int]]:
-    return [(floor, position) for floor in ["A", "B", "C"] for position in range(1, 10)]
+def posiciones_en_orden(
+    cantidad_treatment_floors: int = DEFAULT_TREATMENT_FLOORS,
+    cantidad_replicas: int = DEFAULT_REPLICAS,
+) -> list[tuple[str, int]]:
+    return generar_posiciones(cantidad_treatment_floors, cantidad_replicas)
 
 
-def validar_posicion(posicion: str) -> tuple[str, int]:
+def posiciones_en_orden_desde_datos(datos) -> list[tuple[str, int]]:
+    return [
+        (fila["floor"], int(fila["position"]))
+        for fila in ordenar_datos(datos)
+    ]
+
+
+def obtener_posiciones_validas(datos) -> set[tuple[str, int]]:
+    return set(posiciones_en_orden_desde_datos(datos))
+
+
+def obtener_configuracion_trays(datos) -> dict[str, object]:
+    posiciones = posiciones_en_orden_desde_datos(datos)
+    floors = sorted({floor for floor, _ in posiciones}, key=indice_floor)
+    treatment_floors = sorted({position for _, position in posiciones})
+
+    return {
+        "cantidad_replicas": len(floors),
+        "cantidad_treatment_floors": len(treatment_floors),
+        "floors": floors,
+        "posiciones": posiciones,
+        "primer_posicion": f"{posiciones[0][0]}{posiciones[0][1]}" if posiciones else "A1",
+        "ultima_posicion": f"{posiciones[-1][0]}{posiciones[-1][1]}" if posiciones else "A1",
+    }
+
+
+def validar_posicion(
+    posicion: str,
+    posiciones_validas: Optional[set[tuple[str, int]]] = None,
+) -> tuple[str, int]:
     entrada = posicion.strip().upper()
+    match = re.fullmatch(r"([A-Z]+)(\d+)", entrada)
 
-    if len(entrada) < 2:
-        raise ValueError("Ingresá una posición válida, por ejemplo A1 o C9.")
+    if match is None:
+        raise ValueError("Ingresá una posición válida, por ejemplo A1 o B3.")
 
-    floor_entrada = entrada[0]
-    position_entrada = entrada[1:]
-
-    if floor_entrada not in {"A", "B", "C"} or not position_entrada.isdigit():
-        raise ValueError("Ingresá una posición válida, por ejemplo A1 o C9.")
-
+    floor_entrada, position_entrada = match.groups()
     position_num = int(position_entrada)
-    if not (1 <= position_num <= 9):
-        raise ValueError("La posición debe estar entre A1 y C9.")
+    if position_num <= 0:
+        raise ValueError("La posición debe ser mayor que cero.")
+
+    if posiciones_validas is not None:
+        if not posiciones_validas:
+            raise ValueError("Primero cargá un experimento con bandejas.")
+
+        if (floor_entrada, position_num) in posiciones_validas:
+            return floor_entrada, position_num
+
+        posiciones_ordenadas = sorted(
+            posiciones_validas,
+            key=lambda item: (indice_floor(item[0]), item[1]),
+        )
+        primera = f"{posiciones_ordenadas[0][0]}{posiciones_ordenadas[0][1]}"
+        ultima = f"{posiciones_ordenadas[-1][0]}{posiciones_ordenadas[-1][1]}"
+        raise ValueError(
+            f"La posición debe estar dentro de las bandejas cargadas ({primera} a {ultima})."
+        )
 
     return floor_entrada, position_num
 
@@ -363,9 +487,11 @@ def buscar_fila(datos, floor: str, position: int):
 
 
 def sugerir_siguiente_posicion(datos, ultima_posicion: Optional[tuple[str, int]] = None) -> str:
-    orden = posiciones_en_orden()
+    orden = posiciones_en_orden_desde_datos(datos)
+    if not orden:
+        return "A1"
 
-    if ultima_posicion is not None:
+    if ultima_posicion is not None and ultima_posicion in orden:
         indice_actual = orden.index(ultima_posicion)
         if indice_actual < len(orden) - 1:
             siguiente_floor, siguiente_position = orden[indice_actual + 1]
@@ -383,7 +509,7 @@ def sugerir_siguiente_posicion(datos, ultima_posicion: Optional[tuple[str, int]]
         if fila is not None and (fila["pre_weight"] == "" or fila["post_weight"] == ""):
             return f"{floor}{position}"
 
-    return "A1"
+    return f"{orden[0][0]}{orden[0][1]}"
 
 
 def obtener_estado_experimento(
@@ -400,6 +526,7 @@ def obtener_estado_experimento(
     return {
         "datos": ordenar_datos(datos),
         "siguiente_posicion": sugerir_siguiente_posicion(datos, ultima_posicion),
+        "configuracion": obtener_configuracion_trays(datos),
     }
 
 
@@ -416,8 +543,12 @@ def actualizar_pesos_en_posicion(
             f"No existe '{archivo}'. Primero tenés que crear el experimento."
         )
 
-    floor_entrada, position_num = validar_posicion(posicion)
     datos = leer_datos(exp_id)
+    posiciones_validas = obtener_posiciones_validas(datos)
+    floor_entrada, position_num = validar_posicion(
+        posicion,
+        posiciones_validas=posiciones_validas,
+    )
     fila = buscar_fila(datos, floor_entrada, position_num)
 
     if fila is None:
@@ -463,7 +594,10 @@ def actualizar_pesos():
             entrada = sugerida
 
         try:
-            floor_entrada, position_num = validar_posicion(entrada)
+            floor_entrada, position_num = validar_posicion(
+                entrada,
+                posiciones_validas=obtener_posiciones_validas(datos),
+            )
         except ValueError as exc:
             print(f"{exc}\n")
             continue
@@ -507,7 +641,26 @@ def menu():
 
         if opcion == "1":
             exp_id = pedir_fecha()
-            crear_trays_csv(exp_id)
+            cantidad_treatment_floors = input(
+                f"Cantidad de treatment floors (Enter = {DEFAULT_TREATMENT_FLOORS}): "
+            ).strip()
+            cantidad_replicas = input(
+                f"Cantidad de réplicas (Enter = {DEFAULT_REPLICAS}): "
+            ).strip()
+
+            crear_trays_csv(
+                exp_id,
+                cantidad_treatment_floors=(
+                    cantidad_treatment_floors
+                    if cantidad_treatment_floors
+                    else DEFAULT_TREATMENT_FLOORS
+                ),
+                cantidad_replicas=(
+                    cantidad_replicas
+                    if cantidad_replicas
+                    else DEFAULT_REPLICAS
+                ),
+            )
         elif opcion == "2":
             exp_id = pedir_fecha()
             crear_estructura_experimento(exp_id)

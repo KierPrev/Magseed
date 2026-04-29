@@ -1,0 +1,6 @@
+#Experimento
+(post_weight - pre_weight) / mean(control_delta_3controles)
+- Absoluto
+
+#Control negativo
+(post_weight - pre_weight) / pre_weight
