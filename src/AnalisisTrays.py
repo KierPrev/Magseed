@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import os
+import tempfile
 import warnings
 from pathlib import Path
 from typing import Any
 
-import matplotlib
-
-matplotlib.use("Agg")
-
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from scipy import stats
 
 try:
@@ -88,6 +84,40 @@ TREATMENT_VS_CONTROL_COLUMNS = [
     "mean_control",
     "notes",
 ]
+
+plt: Any | None = None
+sns: Any | None = None
+
+
+def cargar_dependencias_plotting() -> bool:
+    global plt, sns
+
+    if plt is not None and sns is not None:
+        return True
+
+    try:
+        os.environ.setdefault(
+            "MPLCONFIGDIR",
+            str(Path(tempfile.gettempdir()) / "magseed-matplotlib-cache"),
+        )
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+
+        import matplotlib.pyplot as matplotlib_pyplot
+        import seaborn as seaborn_module
+    except ImportError as exc:
+        warnings.warn(
+            "No se pudieron cargar matplotlib/seaborn; se omitira la generacion "
+            f"de plots. Detalle: {exc}",
+            RuntimeWarning,
+        )
+        return False
+
+    plt = matplotlib_pyplot
+    sns = seaborn_module
+    return True
 
 
 def construir_parser() -> argparse.ArgumentParser:
@@ -1545,6 +1575,9 @@ def guardar_plots_experimento(
     plots_dir: Path,
     comparisons: pd.DataFrame | None = None,
 ) -> None:
+    if not cargar_dependencias_plotting():
+        return
+
     plots_dir.mkdir(parents=True, exist_ok=True)
     es_control_negativo = es_experimento_control_negativo(data)
 
