@@ -348,7 +348,103 @@ class PipelineGUI(tk.Tk):
             "carpeta_testigos": output_dir / "procesadas_debug",
             "archivo_config": output_dir / "parametros_calibracion.json",
             "plots_dir": plots_dir,
+            "trays_csv": experiment_dir / "trays.csv",
+            "metadata_csv": Path(self.get_base_directory()).expanduser().resolve().parent
+            / "experiments_metadata.csv",
         }
+
+    def needs_legacy_results_refresh(self, rutas):
+        archivo_limpio = rutas["archivo_limpio"]
+        if not archivo_limpio.exists():
+            return True
+
+        fuentes = [rutas["archivo_detallado"], rutas["trays_csv"], rutas["metadata_csv"]]
+        salida_mtime = archivo_limpio.stat().st_mtime
+        return any(fuente.exists() and fuente.stat().st_mtime > salida_mtime for fuente in fuentes)
+
+    def build_legacy_results_file(self, rutas):
+        import pandas as pd
+
+        archivo_detallado = rutas["archivo_detallado"]
+        if not archivo_detallado.exists():
+            raise FileNotFoundError(
+                f"No existe {archivo_detallado}. Ejecutá Analizar primero para generar root_lengths.csv."
+            )
+
+        df = pd.read_csv(archivo_detallado)
+        columnas_requeridas = {"tray_id", "seed_id", "length_mm", "area_cm2"}
+        faltantes = columnas_requeridas - set(df.columns)
+        if faltantes:
+            raise ValueError(
+                f"{archivo_detallado} no tiene las columnas esperadas: "
+                + ", ".join(sorted(faltantes))
+            )
+
+        df = df.copy()
+        df["tray_id"] = df["tray_id"].astype(str).str.strip()
+        df["seed_id"] = df["seed_id"].astype(str).str.strip()
+        df["length_mm"] = pd.to_numeric(df["length_mm"], errors="coerce")
+        df["area_cm2"] = pd.to_numeric(df["area_cm2"], errors="coerce")
+        df["Replica"] = df["tray_id"].str.extract(r"^[^_]+_([^_]+)", expand=False)
+        df["Replica"] = df["Replica"].fillna(df["tray_id"])
+
+        df["Grupo"] = "Control"
+        if rutas["trays_csv"].exists():
+            trays = pd.read_csv(rutas["trays_csv"])
+            if {"tray_id", "treatment_floor"}.issubset(trays.columns):
+                trays = trays[["tray_id", "treatment_floor"]].copy()
+                trays["tray_id"] = trays["tray_id"].astype(str).str.strip()
+                trays["treatment_floor"] = pd.to_numeric(
+                    trays["treatment_floor"].astype(str).str.replace(",", ".", regex=False),
+                    errors="coerce",
+                )
+                df = df.merge(trays, on="tray_id", how="left")
+
+                active_magnet = True
+                if rutas["metadata_csv"].exists():
+                    metadata = pd.read_csv(rutas["metadata_csv"], dtype=str)
+                    exp_id = rutas["experiment_dir"].name
+                    metadata_exp = metadata[
+                        metadata.get("exp_id", "").astype(str).str.strip() == exp_id
+                    ]
+                    if not metadata_exp.empty:
+                        magnet = str(metadata_exp.iloc[0].get("magnet", "")).strip().upper()
+                        active_magnet = bool(magnet and magnet != "NONE")
+
+                if active_magnet:
+                    df["Grupo"] = df["treatment_floor"].apply(
+                        lambda value: "Control" if value == 9 else "Magnetico"
+                    )
+
+        largo = df[["Grupo", "Replica", "seed_id", "length_mm"]].copy()
+        largo["Tipo_Objeto"] = DEFAULT_OBJETO
+        largo["Medida_Tipo"] = "Largo_cm"
+        largo["Medida_Valor"] = largo["length_mm"] / 10.0
+
+        area = df[["Grupo", "Replica", "seed_id", "area_cm2"]].copy()
+        area["Tipo_Objeto"] = DEFAULT_OBJETO
+        area["Medida_Tipo"] = "Area_cm2"
+        area["Medida_Valor"] = area["area_cm2"]
+
+        legacy = pd.concat(
+            [
+                largo[["Grupo", "Tipo_Objeto", "Medida_Tipo", "Medida_Valor", "Replica", "seed_id"]],
+                area[["Grupo", "Tipo_Objeto", "Medida_Tipo", "Medida_Valor", "Replica", "seed_id"]],
+            ],
+            ignore_index=True,
+        )
+        legacy = legacy.dropna(subset=["Medida_Valor"])
+        legacy.to_csv(rutas["archivo_limpio"], index=False)
+        print(
+            f"[OK] Archivo compatible generado: {rutas['archivo_limpio']} "
+            f"({len(legacy)} mediciones)."
+        )
+        return rutas["archivo_limpio"]
+
+    def ensure_legacy_results_file(self, rutas):
+        if self.needs_legacy_results_refresh(rutas):
+            return self.build_legacy_results_file(rutas)
+        return rutas["archivo_limpio"]
 
     def choose_base_folder(self):
         selected_dir = filedialog.askdirectory(
@@ -482,19 +578,22 @@ class PipelineGUI(tk.Tk):
 
         graficas = self.get_module("Graficas")
         rutas = self.get_output_paths(carpeta)
-        if not rutas["archivo_limpio"].exists():
+        if not rutas["archivo_limpio"].exists() and not rutas["archivo_detallado"].exists():
             messagebox.showwarning(
                 "Falta análisis",
-                f"No existe un archivo analizado para {carpeta}.\nPrimero ejecutá Analizar para esta fecha.",
+                f"No existe root_lengths.csv para {carpeta}.\nPrimero ejecutá Analizar para esta fecha.",
             )
             return
 
         self.execute_with_log(
             "Graficas",
-            lambda: graficas.graficar_datos(
-                archivo_datos=str(rutas["archivo_limpio"]),
-                objeto_a_graficar=self.objeto_var.get(),
-                tipo_medida=self.medida_var.get(),
+            lambda: (
+                self.ensure_legacy_results_file(rutas),
+                graficas.graficar_datos(
+                    archivo_datos=str(rutas["archivo_limpio"]),
+                    objeto_a_graficar=self.objeto_var.get(),
+                    tipo_medida=self.medida_var.get(),
+                ),
             ),
         )
 
@@ -505,19 +604,22 @@ class PipelineGUI(tk.Tk):
 
         numeros = self.get_module("Numeros")
         rutas = self.get_output_paths(carpeta)
-        if not rutas["archivo_limpio"].exists():
+        if not rutas["archivo_limpio"].exists() and not rutas["archivo_detallado"].exists():
             messagebox.showwarning(
                 "Falta análisis",
-                f"No existe un archivo analizado para {carpeta}.\nPrimero ejecutá Analizar para esta fecha.",
+                f"No existe root_lengths.csv para {carpeta}.\nPrimero ejecutá Analizar para esta fecha.",
             )
             return
 
         self.execute_with_log(
             "Estadisticas",
-            lambda: numeros.analizar_estadisticas(
-                archivo=str(rutas["archivo_limpio"]),
-                tipo_objeto=self.objeto_var.get(),
-                tipo_medida=self.medida_var.get(),
+            lambda: (
+                self.ensure_legacy_results_file(rutas),
+                numeros.analizar_estadisticas(
+                    archivo=str(rutas["archivo_limpio"]),
+                    tipo_objeto=self.objeto_var.get(),
+                    tipo_medida=self.medida_var.get(),
+                ),
             ),
         )
 

@@ -141,7 +141,23 @@ def validar_exp_id(exp_id: str) -> str:
     return valor
 
 
-def descubrir_trays(exp_id: str | None = None) -> list[Path]:
+def descubrir_trays(
+    exp_id: str | None = None,
+    exp_ids: list[str] | tuple[str, ...] | None = None,
+) -> list[Path]:
+    if exp_id is not None and exp_ids is not None:
+        raise ValueError("Usa exp_id o exp_ids, no ambos.")
+
+    if exp_ids is not None:
+        rutas: list[Path] = []
+        for valor in exp_ids:
+            exp_id_validado = validar_exp_id(valor)
+            ruta = EXPERIMENTS_DIR / exp_id_validado / TRAYS_FILENAME
+            if not ruta.exists():
+                raise FileNotFoundError(f"No existe '{ruta}'.")
+            rutas.append(ruta)
+        return rutas
+
     if exp_id is not None:
         exp_id = validar_exp_id(exp_id)
         ruta = EXPERIMENTS_DIR / exp_id / TRAYS_FILENAME
@@ -1829,6 +1845,355 @@ def guardar_global(
     )
 
 
+def _ajustar_modelo_control_negativo_combinado(
+    data: pd.DataFrame,
+    *,
+    response_metric: str,
+) -> pd.DataFrame:
+    filas: list[dict[str, Any]] = []
+    model_data = data.copy()
+    model_data[response_metric] = pd.to_numeric(
+        model_data[response_metric], errors="coerce"
+    )
+    model_data = model_data.dropna(subset=[response_metric]).copy()
+    model_data["exp_id"] = model_data["exp_id"].astype(str)
+    model_data["floor"] = model_data["floor"].astype(str)
+    model_data["position_factor"] = model_data["position"].astype("string")
+    formula = f"{response_metric} ~ C(exp_id) + C(floor) + C(position_factor)"
+
+    base_row = {
+        "analysis_scope": "negative_control_combined",
+        "source_exp_id": ",".join(sorted(data["exp_id"].astype(str).unique())),
+        "response_metric": response_metric,
+        "analysis_type": "term_test",
+        "model_name": "negative_control_day_spatial_effect",
+        "formula": formula,
+        "method": "anova_typ2",
+        "term": pd.NA,
+        "estimate": np.nan,
+        "std_error": np.nan,
+        "statistic": np.nan,
+        "statistic_name": "F",
+        "p_value": np.nan,
+        "conf_int_low": np.nan,
+        "conf_int_high": np.nan,
+        "sum_sq": np.nan,
+        "df_term": np.nan,
+        "n_obs": len(model_data),
+        "rsquared": np.nan,
+        "adj_rsquared": np.nan,
+        "notes": pd.NA,
+    }
+
+    if len(model_data) < 4:
+        fila = base_row.copy()
+        fila["analysis_type"] = "model_not_run"
+        fila["method"] = "insufficient_data"
+        fila["notes"] = "No alcanza para ajustar el modelo combinado."
+        return pd.DataFrame([fila])
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            resultado = smf.ols(formula=formula, data=model_data).fit()
+            anova = sm.stats.anova_lm(resultado, typ=2).reset_index()
+    except Exception as exc:
+        fila = base_row.copy()
+        fila["analysis_type"] = "model_error"
+        fila["method"] = "ols/anova_typ2"
+        fila["notes"] = str(exc)
+        return pd.DataFrame([fila])
+
+    anova.rename(columns={"index": "term", "PR(>F)": "p_value"}, inplace=True)
+    anova = anova[anova["term"] != "Residual"]
+    for _, fila_anova in anova.iterrows():
+        fila = base_row.copy()
+        fila.update(
+            {
+                "term": fila_anova["term"],
+                "statistic": fila_anova.get("F", np.nan),
+                "p_value": fila_anova.get("p_value", np.nan),
+                "sum_sq": fila_anova.get("sum_sq", np.nan),
+                "df_term": fila_anova.get("df", np.nan),
+                "n_obs": int(resultado.nobs),
+                "rsquared": resultado.rsquared,
+                "adj_rsquared": resultado.rsquared_adj,
+            }
+        )
+        filas.append(fila)
+
+    return pd.DataFrame(filas)
+
+
+def _one_sample_tests_control_negativo(data: pd.DataFrame) -> pd.DataFrame:
+    filas: list[dict[str, Any]] = []
+    source_exp_id = ",".join(sorted(data["exp_id"].astype(str).unique()))
+    tests = {
+        "raw_delta_weight": 0.0,
+        "pct_change": 0.0,
+        "raw_log_ratio": 0.0,
+        "log_ratio_centered": 0.0,
+    }
+
+    for metrica, valor_esperado in tests.items():
+        serie = pd.to_numeric(data[metrica], errors="coerce").dropna()
+        statistic = np.nan
+        p_value = np.nan
+        notes = pd.NA
+        if len(serie) < 2:
+            notes = "No alcanza para t-test de una muestra."
+        elif serie.nunique() < 2:
+            notes = "No se pudo calcular por falta de variacion."
+        else:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                resultado = stats.ttest_1samp(serie, popmean=valor_esperado)
+            statistic, p_value = _extraer_stat_pvalue(resultado)
+
+        filas.append(
+            {
+                "analysis_scope": "negative_control_combined",
+                "source_exp_id": source_exp_id,
+                "response_metric": metrica,
+                "analysis_type": "one_sample_ttest",
+                "model_name": "negative_control_mean_vs_expected",
+                "formula": pd.NA,
+                "method": "ttest_1samp",
+                "term": f"mean = {valor_esperado:g}",
+                "estimate": float(serie.mean()) if not serie.empty else np.nan,
+                "std_error": float(serie.std(ddof=1) / np.sqrt(len(serie))) if len(serie) > 1 else np.nan,
+                "statistic": statistic,
+                "statistic_name": "t",
+                "p_value": p_value,
+                "conf_int_low": np.nan,
+                "conf_int_high": np.nan,
+                "sum_sq": np.nan,
+                "df_term": len(serie) - 1 if len(serie) > 0 else np.nan,
+                "n_obs": len(serie),
+                "rsquared": np.nan,
+                "adj_rsquared": np.nan,
+                "notes": notes,
+            }
+        )
+
+    return pd.DataFrame(filas)
+
+
+def resumen_control_negativo_combinado(data: pd.DataFrame, models: pd.DataFrame) -> dict[str, Any]:
+    exp_ids = sorted(data["exp_id"].astype(str).unique().tolist())
+    total = len(data)
+    valid_delta = int(data["raw_delta_weight"].notna().sum())
+    valid_pct = int(data["pct_change"].notna().sum())
+    valid_log = int(data["raw_log_ratio"].notna().sum())
+
+    def p_term(metrica: str, termino: str) -> float:
+        subset = models[
+            (models["analysis_type"] == "term_test")
+            & (models["response_metric"] == metrica)
+            & (models["term"] == termino)
+        ]
+        if subset.empty:
+            return np.nan
+        return float(subset["p_value"].iloc[0])
+
+    def mean_test(metrica: str) -> tuple[float, float]:
+        subset = models[
+            (models["analysis_type"] == "one_sample_ttest")
+            & (models["response_metric"] == metrica)
+        ]
+        if subset.empty:
+            return np.nan, np.nan
+        fila = subset.iloc[0]
+        return float(fila["estimate"]), float(fila["p_value"])
+
+    raw_delta_mean, raw_delta_p = mean_test("raw_delta_weight")
+    pct_mean, pct_p = mean_test("pct_change")
+    raw_log_mean, raw_log_p = mean_test("raw_log_ratio")
+
+    return {
+        "exp_ids": exp_ids,
+        "total_rows": total,
+        "valid_delta_rows": valid_delta,
+        "valid_pct_rows": valid_pct,
+        "valid_log_rows": valid_log,
+        "raw_delta_mean": raw_delta_mean,
+        "raw_delta_mean_p_value": raw_delta_p,
+        "pct_change_mean": pct_mean,
+        "pct_change_mean_p_value": pct_p,
+        "raw_log_ratio_mean": raw_log_mean,
+        "raw_log_ratio_mean_p_value": raw_log_p,
+        "day_raw_delta_p_value": p_term("raw_delta_weight", "C(exp_id)"),
+        "floor_raw_delta_p_value": p_term("raw_delta_weight", "C(floor)"),
+        "position_raw_delta_p_value": p_term("raw_delta_weight", "C(position_factor)"),
+        "day_pct_p_value": p_term("pct_change", "C(exp_id)"),
+        "floor_pct_p_value": p_term("pct_change", "C(floor)"),
+        "position_pct_p_value": p_term("pct_change", "C(position_factor)"),
+        "day_log_p_value": p_term("raw_log_ratio", "C(exp_id)"),
+        "floor_log_p_value": p_term("raw_log_ratio", "C(floor)"),
+        "position_log_p_value": p_term("raw_log_ratio", "C(position_factor)"),
+        "output_dir": str(GLOBAL_ANALYSIS_DIR / "negative_control_combined"),
+    }
+
+
+def guardar_control_negativo_combinado(
+    enriched: pd.DataFrame,
+    summary: pd.DataFrame,
+    models: pd.DataFrame,
+) -> Path:
+    output_dir = GLOBAL_ANALYSIS_DIR / "negative_control_combined"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    enriched.to_csv(output_dir / "negative_control_combined_enriched.csv", index=False)
+    summary.to_csv(output_dir / "negative_control_combined_summary.csv", index=False)
+    models.to_csv(output_dir / "negative_control_combined_models.csv", index=False)
+    guardar_plot_control_negativo_combinado(enriched, output_dir)
+    return output_dir
+
+
+def guardar_plot_control_negativo_combinado(
+    data: pd.DataFrame,
+    output_dir: Path,
+) -> Path | None:
+    if not cargar_dependencias_plotting():
+        return None
+
+    plot_data = data.dropna(subset=["floor", "pct_change", "exp_id"]).copy()
+    if plot_data.empty:
+        return None
+
+    plot_data["floor"] = plot_data["floor"].astype(str)
+    plot_data["exp_id"] = plot_data["exp_id"].astype(str)
+    orden_floor = [
+        floor for floor in FLOOR_ORDER if floor in plot_data["floor"].unique().tolist()
+    ]
+    if not orden_floor:
+        orden_floor = sorted(plot_data["floor"].unique().tolist())
+
+    exp_order = sorted(plot_data["exp_id"].unique().tolist())
+    palette = dict(
+        zip(exp_order, sns.color_palette("Set2", n_colors=max(len(exp_order), 3)))
+    )
+
+    sns.set_theme(style="whitegrid", context="notebook")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.boxplot(
+        data=plot_data,
+        x="floor",
+        y="pct_change",
+        order=orden_floor,
+        showfliers=False,
+        color="#d8dee2",
+        ax=ax,
+    )
+    sns.stripplot(
+        data=plot_data,
+        x="floor",
+        y="pct_change",
+        hue="exp_id",
+        order=orden_floor,
+        hue_order=exp_order,
+        palette=palette,
+        dodge=True,
+        jitter=0.18,
+        alpha=0.85,
+        size=7,
+        ax=ax,
+    )
+    y_min = float(plot_data["pct_change"].min())
+    y_max = float(plot_data["pct_change"].max())
+    y_range = y_max - y_min
+    y_margin = y_range * 0.08 if y_range > 0 else max(abs(y_min) * 0.08, 0.01)
+    ax.set_ylim(y_min - y_margin, y_max + y_margin)
+    ax.set_title("Control negativo combinado: cambio relativo por piso")
+    ax.set_xlabel("Piso")
+    ax.set_ylabel("Cambio relativo ((post_weight - pre_weight) / pre_weight)")
+    ax.legend(title="Día", frameon=True, loc="best")
+    fig.tight_layout()
+    output_path = output_dir / "negative_control_combined_pct_change_by_floor_day.png"
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
+    return output_path
+
+
+def run_negative_control_analysis(
+    exp_ids: list[str] | tuple[str, ...],
+    verbose: bool = True,
+) -> dict[str, Any]:
+    if sm is None or smf is None:
+        raise RuntimeError(
+            "No se encontro 'statsmodels'. Instala dependencias con "
+            "'pip install -r requirements.txt' antes de ejecutar este analisis."
+        )
+    if len(exp_ids) < 2:
+        raise ValueError("Selecciona al menos dos experimentos para combinar controles negativos.")
+
+    metadata, advertencias = leer_metadata_global()
+    trays_paths = descubrir_trays(exp_ids=exp_ids)
+    experimentos: list[pd.DataFrame] = []
+    resumenes_experimentos: list[dict[str, Any]] = []
+
+    for trays_path in trays_paths:
+        enriched, warnings_exp = cargar_experimento(trays_path, metadata)
+        if not es_experimento_control_negativo(enriched):
+            raise ValueError(
+                f"El experimento {trays_path.parent.name} no es control negativo "
+                "(metadata magnet debe ser NONE)."
+            )
+        models = modelos_experimento(enriched)
+        summary = resumen_experimento(enriched)
+        comparisons = comparaciones_tratamiento_vs_control_experimento(enriched)
+        guardar_experimento(enriched, summary, models, comparisons)
+        experimentos.append(enriched)
+        resumenes_experimentos.append(construir_resumen_experimento(enriched, models))
+        advertencias.extend(warnings_exp)
+
+    combined = pd.concat(experimentos, ignore_index=True)
+    summary = resumen_global(combined)
+    model_parts = [_one_sample_tests_control_negativo(combined)]
+    for metrica in ("raw_delta_weight", "pct_change", "raw_log_ratio", "log_ratio_centered"):
+        model_parts.append(
+            _ajustar_modelo_control_negativo_combinado(
+                combined,
+                response_metric=metrica,
+            )
+        )
+    models = pd.concat(model_parts, ignore_index=True)
+    output_dir = guardar_control_negativo_combinado(combined, summary, models)
+    plot_path = output_dir / "negative_control_combined_pct_change_by_floor_day.png"
+    combined_summary = resumen_control_negativo_combinado(combined, models)
+
+    advertencias_unicas = sorted(set(advertencias))
+    if verbose:
+        imprimir_resumen(resumenes_experimentos, advertencias_unicas)
+        print()
+        print("=" * 72)
+        print("Control negativo combinado")
+        print("=" * 72)
+        print(f"Experimentos: {', '.join(combined_summary['exp_ids'])}")
+        print(
+            "Datos: "
+            f"{combined_summary['total_rows']} trays | "
+            f"delta {combined_summary['valid_delta_rows']}/{combined_summary['total_rows']} | "
+            f"pct {combined_summary['valid_pct_rows']}/{combined_summary['total_rows']} | "
+            f"log {combined_summary['valid_log_rows']}/{combined_summary['total_rows']}"
+        )
+        print(f"Archivos: {output_dir}")
+        if plot_path.exists():
+            print(f"Plot: {plot_path}")
+
+    return {
+        "experiment_data": experimentos,
+        "experiment_summaries": resumenes_experimentos,
+        "combined_enriched": combined,
+        "combined_summary_table": summary,
+        "combined_models": models,
+        "combined_summary": combined_summary,
+        "warnings": advertencias_unicas,
+        "output_dir": str(output_dir),
+        "plot_path": str(plot_path) if plot_path.exists() else "",
+        "global_analysis_dir": str(GLOBAL_ANALYSIS_DIR),
+    }
+
+
 def _valor_p_term(
     models: pd.DataFrame,
     term: str,
@@ -2113,7 +2478,11 @@ def imprimir_resumen(
             print(f"- {advertencia}")
 
 
-def run_analysis(exp_id: str | None = None, verbose: bool = True) -> dict[str, Any]:
+def run_analysis(
+    exp_id: str | None = None,
+    verbose: bool = True,
+    exp_ids: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, Any]:
     if sm is None or smf is None:
         raise RuntimeError(
             "No se encontro 'statsmodels'. Instala dependencias con "
@@ -2121,7 +2490,7 @@ def run_analysis(exp_id: str | None = None, verbose: bool = True) -> dict[str, A
         )
 
     metadata, advertencias = leer_metadata_global()
-    trays_paths = descubrir_trays(exp_id)
+    trays_paths = descubrir_trays(exp_id=exp_id, exp_ids=exp_ids)
 
     experimentos: list[pd.DataFrame] = []
     modelos: list[pd.DataFrame] = []

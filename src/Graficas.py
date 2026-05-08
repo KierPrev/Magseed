@@ -62,6 +62,8 @@ def graficar_datos(
     fmt = "{:.5f}" if "Area" in tipo_medida else "{:.2f}"
     unidad = "(cm2)" if "Area" in tipo_medida else "(cm)"
     paleta_colores = {'Control': COLOR_CONTROL, 'Magnetico': COLOR_TRATADO}
+    grupos_presentes = set(df_subset['Grupo'].dropna().astype(str).unique())
+    paleta = paleta_colores if grupos_presentes.issubset(paleta_colores) else None
 
     fig1, ax1 = plt.subplots(figsize=(10, 7))
     fig1.canvas.manager.set_window_title('Ventana 1: Detalle por Réplica')
@@ -72,7 +74,7 @@ def graficar_datos(
         x='ID_Muestra',
         y='Medida_Valor',
         hue='Grupo',
-        palette=paleta_colores,
+        palette=paleta,
         showfliers=False,
         dodge=False,
         width=0.6,
@@ -136,7 +138,7 @@ def graficar_datos(
         data=df_subset,
         x='Grupo',
         y='Medida_Valor',
-        palette=paleta_colores,
+        palette=paleta,
         showfliers=False,
         width=0.5,
         ax=ax2,

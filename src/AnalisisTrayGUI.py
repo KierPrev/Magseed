@@ -53,7 +53,7 @@ class AnalisisTrayGUI(tk.Tk):
         self.base_dir_var = tk.StringVar(
             value=f"Experimentos: {AnalisisTrays.EXPERIMENTS_DIR}"
         )
-        self.selected_exp_var = tk.StringVar(value="Experimento seleccionado: -")
+        self.selected_exp_var = tk.StringVar(value="Experimentos seleccionados: -")
         self.global_dir_var = tk.StringVar(
             value=f"Consolidado global: {AnalisisTrays.GLOBAL_ANALYSIS_DIR}"
         )
@@ -226,7 +226,7 @@ class AnalisisTrayGUI(tk.Tk):
 
         self.experiment_list = tk.Listbox(
             list_frame,
-            selectmode=tk.BROWSE,
+            selectmode=tk.EXTENDED,
             bg="white",
             fg=TEXT_COLOR,
             selectbackground="#58708a",
@@ -308,7 +308,7 @@ class AnalisisTrayGUI(tk.Tk):
         ttk.Label(
             frame,
             text=(
-                "Podés analizar una fecha puntual o todo el historial disponible. "
+                "Podés seleccionar una o varias fechas con Shift/Cmd. "
                 "El backend guarda CSVs en processed/ y figuras en plots/."
             ),
             style="Muted.TLabel",
@@ -317,7 +317,7 @@ class AnalisisTrayGUI(tk.Tk):
 
         analyze_selected_button = ttk.Button(
             frame,
-            text="Analizar seleccionado",
+            text="Analizar seleccionados",
             command=self.run_selected_analysis,
         )
         analyze_selected_button.grid(row=2, column=0, sticky="ew", pady=(0, 10))
@@ -331,15 +331,23 @@ class AnalisisTrayGUI(tk.Tk):
         analyze_all_button.grid(row=3, column=0, sticky="ew", pady=(0, 18))
         self.action_buttons.append(analyze_all_button)
 
+        negative_control_button = ttk.Button(
+            frame,
+            text="Control negativo combinado",
+            command=self.run_negative_control_analysis,
+        )
+        negative_control_button.grid(row=4, column=0, sticky="ew", pady=(0, 18))
+        self.action_buttons.append(negative_control_button)
+
         ttk.Label(frame, textvariable=self.selected_exp_var, style="Body.TLabel").grid(
-            row=4, column=0, sticky="w"
+            row=5, column=0, sticky="w"
         )
         ttk.Label(
             frame,
             textvariable=self.global_dir_var,
             style="Muted.TLabel",
             wraplength=250,
-        ).grid(row=5, column=0, sticky="w", pady=(4, 14))
+        ).grid(row=6, column=0, sticky="w", pady=(4, 14))
 
         open_processed_button = ttk.Button(
             frame,
@@ -347,7 +355,7 @@ class AnalisisTrayGUI(tk.Tk):
             command=self.open_selected_processed,
             style="Secondary.TButton",
         )
-        open_processed_button.grid(row=6, column=0, sticky="ew", pady=(0, 10))
+        open_processed_button.grid(row=7, column=0, sticky="ew", pady=(0, 10))
         self.action_buttons.append(open_processed_button)
 
         open_plots_button = ttk.Button(
@@ -356,7 +364,7 @@ class AnalisisTrayGUI(tk.Tk):
             command=self.open_selected_plots,
             style="Secondary.TButton",
         )
-        open_plots_button.grid(row=7, column=0, sticky="ew", pady=(0, 10))
+        open_plots_button.grid(row=8, column=0, sticky="ew", pady=(0, 10))
         self.action_buttons.append(open_plots_button)
 
         open_global_button = ttk.Button(
@@ -365,7 +373,7 @@ class AnalisisTrayGUI(tk.Tk):
             command=lambda: self.open_path(AnalisisTrays.GLOBAL_ANALYSIS_DIR),
             style="Secondary.TButton",
         )
-        open_global_button.grid(row=8, column=0, sticky="ew")
+        open_global_button.grid(row=9, column=0, sticky="ew")
         self.action_buttons.append(open_global_button)
 
         return outer_frame
@@ -514,7 +522,7 @@ class AnalisisTrayGUI(tk.Tk):
             return []
 
     def refresh_experiments(self) -> None:
-        previo = self.get_selected_experiment()
+        previos = set(self.get_selected_experiments())
         experimentos = self.get_available_experiments()
 
         self.experiment_list.delete(0, tk.END)
@@ -522,41 +530,76 @@ class AnalisisTrayGUI(tk.Tk):
             self.experiment_list.insert(tk.END, exp_id)
 
         if experimentos:
-            objetivo = previo if previo in experimentos else experimentos[0]
-            indice = experimentos.index(objetivo)
-            self.experiment_list.selection_set(indice)
-            self.experiment_list.activate(indice)
-            self.experiment_list.see(indice)
-            self.selected_exp_var.set(f"Experimento seleccionado: {objetivo}")
+            objetivos = [exp_id for exp_id in experimentos if exp_id in previos]
+            if not objetivos:
+                objetivos = [experimentos[0]]
+            for objetivo in objetivos:
+                indice = experimentos.index(objetivo)
+                self.experiment_list.selection_set(indice)
+            indice_activo = experimentos.index(objetivos[0])
+            self.experiment_list.activate(indice_activo)
+            self.experiment_list.see(indice_activo)
+            self.update_selected_label()
             self.status_var.set(
                 f"{len(experimentos)} experimentos listos para analizar."
             )
         else:
-            self.selected_exp_var.set("Experimento seleccionado: -")
+            self.selected_exp_var.set("Experimentos seleccionados: -")
             self.status_var.set("No se encontraron trays.csv en data/experiments.")
 
     def on_selection_changed(self, _event=None) -> None:
-        exp_id = self.get_selected_experiment()
-        if exp_id is None:
-            self.selected_exp_var.set("Experimento seleccionado: -")
+        self.update_selected_label()
+
+    def update_selected_label(self) -> None:
+        exp_ids = self.get_selected_experiments()
+        if not exp_ids:
+            self.selected_exp_var.set("Experimentos seleccionados: -")
+        elif len(exp_ids) == 1:
+            self.selected_exp_var.set(f"Experimento seleccionado: {exp_ids[0]}")
         else:
-            self.selected_exp_var.set(f"Experimento seleccionado: {exp_id}")
+            self.selected_exp_var.set(
+                f"Experimentos seleccionados ({len(exp_ids)}): {', '.join(exp_ids)}"
+            )
+
+    def get_selected_experiments(self) -> list[str]:
+        return [self.experiment_list.get(i) for i in self.experiment_list.curselection()]
 
     def get_selected_experiment(self) -> Optional[str]:
-        seleccion = self.experiment_list.curselection()
+        seleccion = self.get_selected_experiments()
         if not seleccion:
             return None
-        return self.experiment_list.get(seleccion[0])
+        return seleccion[0]
 
     def require_selected_experiment(self, action_name: str) -> Optional[str]:
-        exp_id = self.get_selected_experiment()
-        if exp_id is None:
+        exp_ids = self.get_selected_experiments()
+        if not exp_ids:
             messagebox.showwarning(
                 "Sin experimento",
                 f"Seleccioná un experimento YYYYMMDD para {action_name}.",
             )
             return None
-        return exp_id
+        if len(exp_ids) > 1:
+            messagebox.showwarning(
+                "Demasiados experimentos",
+                f"Para {action_name} tenés que seleccionar una sola fecha.",
+            )
+            return None
+        return exp_ids[0]
+
+    def require_selected_experiments(
+        self,
+        action_name: str,
+        *,
+        minimum: int = 1,
+    ) -> list[str] | None:
+        exp_ids = self.get_selected_experiments()
+        if len(exp_ids) < minimum:
+            messagebox.showwarning(
+                "Selección insuficiente",
+                f"Seleccioná al menos {minimum} experimentos para {action_name}.",
+            )
+            return None
+        return exp_ids
 
     def get_experiment_paths(self, exp_id: str) -> dict[str, Path]:
         exp_dir = AnalisisTrays.EXPERIMENTS_DIR / exp_id
@@ -675,6 +718,103 @@ class AnalisisTrayGUI(tk.Tk):
         self.summary_widget.insert("1.0", "\n".join(lineas))
         self.summary_widget.configure(state=tk.DISABLED)
 
+    def _describe_negative_control_signal(self, p_values: list[float]) -> str:
+        disponibles = [valor for valor in p_values if not self._es_nan(valor)]
+        if not disponibles:
+            return "sin test disponible"
+        minimo = min(disponibles)
+        if minimo < 0.05:
+            return "hay diferencias detectables"
+        if minimo < 0.10:
+            return "hay una señal débil"
+        return "sin diferencias claras"
+
+    def render_negative_control_summary(self, result: dict) -> None:
+        resumen = result["combined_summary"]
+        day_p_values = [
+            resumen["day_raw_delta_p_value"],
+            resumen["day_pct_p_value"],
+            resumen["day_log_p_value"],
+        ]
+        spatial_p_values = [
+            resumen["floor_raw_delta_p_value"],
+            resumen["position_raw_delta_p_value"],
+            resumen["floor_pct_p_value"],
+            resumen["position_pct_p_value"],
+            resumen["floor_log_p_value"],
+            resumen["position_log_p_value"],
+        ]
+        mean_p_values = [
+            resumen["raw_delta_mean_p_value"],
+            resumen["pct_change_mean_p_value"],
+            resumen["raw_log_ratio_mean_p_value"],
+        ]
+
+        lineas = [
+            "Control negativo combinado",
+            f"Experimentos: {', '.join(resumen['exp_ids'])}",
+            f"Salida: {result['output_dir']}",
+            f"Plot: {result['plot_path'] or 'no generado'}",
+            "",
+            (
+                "Datos: "
+                f"{resumen['total_rows']} trays | "
+                f"delta {resumen['valid_delta_rows']}/{resumen['total_rows']} | "
+                f"pct {resumen['valid_pct_rows']}/{resumen['total_rows']} | "
+                f"log {resumen['valid_log_rows']}/{resumen['total_rows']}"
+            ),
+            (
+                "Promedios vs 0: "
+                f"delta_raw={self._format_value(resumen['raw_delta_mean'])} "
+                f"(p={self._format_p_value(resumen['raw_delta_mean_p_value'])}) | "
+                f"pct={self._format_value(resumen['pct_change_mean'])} "
+                f"(p={self._format_p_value(resumen['pct_change_mean_p_value'])}) | "
+                f"log_raw={self._format_value(resumen['raw_log_ratio_mean'])} "
+                f"(p={self._format_p_value(resumen['raw_log_ratio_mean_p_value'])})"
+            ),
+            (
+                "Efecto día: "
+                f"delta p={self._format_p_value(resumen['day_raw_delta_p_value'])} | "
+                f"pct p={self._format_p_value(resumen['day_pct_p_value'])} | "
+                f"log p={self._format_p_value(resumen['day_log_p_value'])} | "
+                f"{self._describe_negative_control_signal(day_p_values)}"
+            ),
+            (
+                "Efecto espacial delta_raw: "
+                f"floor p={self._format_p_value(resumen['floor_raw_delta_p_value'])} | "
+                f"position p={self._format_p_value(resumen['position_raw_delta_p_value'])}"
+            ),
+            (
+                "Efecto espacial pct: "
+                f"floor p={self._format_p_value(resumen['floor_pct_p_value'])} | "
+                f"position p={self._format_p_value(resumen['position_pct_p_value'])}"
+            ),
+            (
+                "Efecto espacial log_raw: "
+                f"floor p={self._format_p_value(resumen['floor_log_p_value'])} | "
+                f"position p={self._format_p_value(resumen['position_log_p_value'])} | "
+                f"{self._describe_negative_control_signal(spatial_p_values)}"
+            ),
+            (
+                "Lectura rápida: "
+                f"promedios {self._describe_negative_control_signal(mean_p_values)}, "
+                f"días {self._describe_negative_control_signal(day_p_values)}, "
+                f"espacio {self._describe_negative_control_signal(spatial_p_values)}."
+            ),
+            "",
+        ]
+
+        if result["warnings"]:
+            lineas.append("Advertencias:")
+            for advertencia in result["warnings"]:
+                lineas.append(f"- {advertencia}")
+            lineas.append("")
+
+        self.summary_widget.configure(state=tk.NORMAL)
+        self.summary_widget.delete("1.0", tk.END)
+        self.summary_widget.insert("1.0", "\n".join(lineas))
+        self.summary_widget.configure(state=tk.DISABLED)
+
     def _es_nan(self, valor) -> bool:
         try:
             return valor != valor
@@ -682,17 +822,40 @@ class AnalisisTrayGUI(tk.Tk):
             return False
 
     def run_selected_analysis(self) -> None:
-        exp_id = self.require_selected_experiment("analizar")
-        if exp_id is None:
+        exp_ids = self.require_selected_experiments("analizar", minimum=1)
+        if exp_ids is None:
             return
 
+        if len(exp_ids) == 1:
+            title = f"Analisis de trays {exp_ids[0]}"
+            callback = lambda: AnalisisTrays.run_analysis(exp_id=exp_ids[0], verbose=True)
+        else:
+            title = f"Analisis de trays seleccionados ({len(exp_ids)})"
+            callback = lambda: AnalisisTrays.run_analysis(exp_ids=exp_ids, verbose=True)
+
         result = self.execute_with_log(
-            f"Analisis de trays {exp_id}",
-            lambda: AnalisisTrays.run_analysis(exp_id=exp_id, verbose=True),
+            title,
+            callback,
         )
         if result is not None:
             self.last_result = result
             self.render_summary(result)
+
+    def run_negative_control_analysis(self) -> None:
+        exp_ids = self.require_selected_experiments(
+            "combinar controles negativos",
+            minimum=2,
+        )
+        if exp_ids is None:
+            return
+
+        result = self.execute_with_log(
+            f"Control negativo combinado ({len(exp_ids)} experimentos)",
+            lambda: AnalisisTrays.run_negative_control_analysis(exp_ids, verbose=True),
+        )
+        if result is not None:
+            self.last_result = result
+            self.render_negative_control_summary(result)
 
     def run_all_analysis(self) -> None:
         if not self.get_available_experiments():

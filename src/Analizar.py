@@ -59,6 +59,9 @@ QR_LADO_REAL_MM = 17.274193548387096
 MAX_DIM_ANALISIS = 2600
 BLACK_BG_GRAY_MAX = 95
 BLACK_BG_INSET_PX = 18
+QR_BOTTOM_EXCLUSION_START = 0.76
+QR_BOTTOM_EXCLUSION_MARGIN_PX = 6
+MAX_ROOT_LENGTH_MM = 120.0
 
 # Valores por defecto
 PARAMS = {
@@ -358,6 +361,21 @@ def extraer_semillas_desde_mascara(mask_semillas, area_minima):
         )
 
     return detalles_semillas
+
+
+def limite_zona_qr_inferior(alto_img):
+    return int(alto_img * QR_BOTTOM_EXCLUSION_START)
+
+
+def excluir_zona_qr_inferior(mask):
+    mask_filtrada = mask.copy()
+    y_inicio = limite_zona_qr_inferior(mask.shape[0])
+    mask_filtrada[y_inicio:, :] = 0
+    return mask_filtrada, y_inicio
+
+
+def contorno_toca_zona_qr_inferior(y, h, y_limite):
+    return (y + h) >= (y_limite - QR_BOTTOM_EXCLUSION_MARGIN_PX)
 
 
 def rotar_imagen_90(img, rotaciones):
@@ -803,6 +821,8 @@ def procesar_imagen(img_original, params, px_por_mm_qr=None, generar_debug=True)
             mask_radiculas, cv2.MORPH_OPEN, np.ones((k_clean, k_clean), np.uint8)
         )
 
+    mask_radiculas, y_limite_qr = excluir_zona_qr_inferior(mask_radiculas)
+
     # 5. Calibración
     px_por_mm, ref_encontrada = detectar_referencia(
         hsv, img_debug, params, img_original=img, px_por_mm_qr=px_por_mm_qr
@@ -858,17 +878,22 @@ def procesar_imagen(img_original, params, px_por_mm_qr=None, generar_debug=True)
             x, y, w, h = cv2.boundingRect(cnt)
             aspect = float(w) / h if h > 0 else 0
 
+            if contorno_toca_zona_qr_inferior(y, h, y_limite_qr):
+                continue
             if solidez > 0.6:
                 continue
             if aspect > 8.0 or aspect < 0.12:
                 continue
 
             largo_px = obtener_largo_esqueleto_contorno(cnt, (h_img, w_img))
+            largo_mm = largo_px / px_por_mm
+            if largo_mm > MAX_ROOT_LENGTH_MM:
+                continue
 
             detalles_radiculas.append(
                 {
                     "id": i,
-                    "length_mm": largo_px / px_por_mm,
+                    "length_mm": largo_mm,
                     "area_cm2": area / (px_por_cm**2),
                 }
             )
