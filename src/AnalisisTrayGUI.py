@@ -12,7 +12,7 @@ from tkinter import messagebox, scrolledtext, ttk
 from typing import Optional
 
 import AnalisisTrays
-
+import pandas as pd
 
 BG_COLOR = "#f3eee6"
 CARD_COLOR = "#fffaf3"
@@ -339,15 +339,23 @@ class AnalisisTrayGUI(tk.Tk):
         negative_control_button.grid(row=4, column=0, sticky="ew", pady=(0, 18))
         self.action_buttons.append(negative_control_button)
 
+        combine_trays_button = ttk.Button(
+            frame,
+            text="Crear tray_combined.csv",
+            command=self.create_selected_tray_combined,
+        )
+        combine_trays_button.grid(row=5, column=0, sticky="ew", pady=(0, 18))
+        self.action_buttons.append(combine_trays_button)
+
         ttk.Label(frame, textvariable=self.selected_exp_var, style="Body.TLabel").grid(
-            row=5, column=0, sticky="w"
+            row=6, column=0, sticky="w"
         )
         ttk.Label(
             frame,
             textvariable=self.global_dir_var,
             style="Muted.TLabel",
             wraplength=250,
-        ).grid(row=6, column=0, sticky="w", pady=(4, 14))
+        ).grid(row=7, column=0, sticky="w", pady=(4, 14))
 
         open_processed_button = ttk.Button(
             frame,
@@ -355,7 +363,7 @@ class AnalisisTrayGUI(tk.Tk):
             command=self.open_selected_processed,
             style="Secondary.TButton",
         )
-        open_processed_button.grid(row=7, column=0, sticky="ew", pady=(0, 10))
+        open_processed_button.grid(row=8, column=0, sticky="ew", pady=(0, 10))
         self.action_buttons.append(open_processed_button)
 
         open_plots_button = ttk.Button(
@@ -364,7 +372,7 @@ class AnalisisTrayGUI(tk.Tk):
             command=self.open_selected_plots,
             style="Secondary.TButton",
         )
-        open_plots_button.grid(row=8, column=0, sticky="ew", pady=(0, 10))
+        open_plots_button.grid(row=9, column=0, sticky="ew", pady=(0, 10))
         self.action_buttons.append(open_plots_button)
 
         open_global_button = ttk.Button(
@@ -373,7 +381,7 @@ class AnalisisTrayGUI(tk.Tk):
             command=lambda: self.open_path(AnalisisTrays.GLOBAL_ANALYSIS_DIR),
             style="Secondary.TButton",
         )
-        open_global_button.grid(row=9, column=0, sticky="ew")
+        open_global_button.grid(row=10, column=0, sticky="ew")
         self.action_buttons.append(open_global_button)
 
         return outer_frame
@@ -562,7 +570,9 @@ class AnalisisTrayGUI(tk.Tk):
             )
 
     def get_selected_experiments(self) -> list[str]:
-        return [self.experiment_list.get(i) for i in self.experiment_list.curselection()]
+        return [
+            self.experiment_list.get(i) for i in self.experiment_list.curselection()
+        ]
 
     def get_selected_experiment(self) -> Optional[str]:
         seleccion = self.get_selected_experiments()
@@ -731,6 +741,11 @@ class AnalisisTrayGUI(tk.Tk):
 
     def render_negative_control_summary(self, result: dict) -> None:
         resumen = result["combined_summary"]
+        plot_paths = result.get("plot_paths") or {}
+        assumption_tests = result.get("combined_assumption_tests")
+        floor_tests = result.get("combined_floor_tests")
+        position_group_tests = result.get("combined_position_group_tests")
+        tray_cell_tests = result.get("combined_tray_cell_tests")
         day_p_values = [
             resumen["day_raw_delta_p_value"],
             resumen["day_pct_p_value"],
@@ -754,7 +769,76 @@ class AnalisisTrayGUI(tk.Tk):
             "Control negativo combinado",
             f"Experimentos: {', '.join(resumen['exp_ids'])}",
             f"Salida: {result['output_dir']}",
-            f"Plot: {result['plot_path'] or 'no generado'}",
+            f"Supuestos: {result.get('assumption_tests_path') or 'no generado'}",
+            f"Comparación A/B/C: {result.get('floor_tests_path') or 'no generado'}",
+            (
+                "Comparación posiciones agrupadas: "
+                f"{result.get('position_group_tests_path') or 'no generado'}"
+            ),
+            f"Comparación A1-C9: {result.get('tray_cell_tests_path') or 'no generado'}",
+            f"Tests por panel: {result.get('facet_tests_path') or 'no generado'}",
+            "Plots:",
+            (
+                "- piso/dia: "
+                f"{plot_paths.get('floor_day') or result['plot_path'] or 'no generado'}"
+            ),
+            (
+                "- barras (media ± SD): "
+                f"{plot_paths.get('barplot_exp') or 'no generado'}"
+            ),
+            (
+                "- A/B/C raw_delta media ± SD: "
+                f"{plot_paths.get('floor_barplot_raw_delta') or 'no generado'}"
+            ),
+            (
+                "- A/B/C pct media ± SD: "
+                f"{plot_paths.get('floor_barplot_pct') or 'no generado'}"
+            ),
+            (
+                "- A/B/C log media ± SD: "
+                f"{plot_paths.get('floor_barplot_log') or 'no generado'}"
+            ),
+            (
+                "- izquierda/centro/derecha raw_delta: "
+                f"{plot_paths.get('left_center_right_barplot_raw_delta') or 'no generado'}"
+            ),
+            (
+                "- izquierda/centro/derecha pct: "
+                f"{plot_paths.get('left_center_right_barplot_pct') or 'no generado'}"
+            ),
+            (
+                "- izquierda/centro/derecha log: "
+                f"{plot_paths.get('left_center_right_barplot_log') or 'no generado'}"
+            ),
+            (
+                "- frente/medio/atras raw_delta: "
+                f"{plot_paths.get('front_middle_back_barplot_raw_delta') or 'no generado'}"
+            ),
+            (
+                "- frente/medio/atras pct: "
+                f"{plot_paths.get('front_middle_back_barplot_pct') or 'no generado'}"
+            ),
+            (
+                "- frente/medio/atras log: "
+                f"{plot_paths.get('front_middle_back_barplot_log') or 'no generado'}"
+            ),
+            (
+                "- A1-C9 raw_delta: "
+                f"{plot_paths.get('tray_cell_barplot_raw_delta') or 'no generado'}"
+            ),
+            (
+                "- A1-C9 pct: "
+                f"{plot_paths.get('tray_cell_barplot_pct') or 'no generado'}"
+            ),
+            (
+                "- A1-C9 log: "
+                f"{plot_paths.get('tray_cell_barplot_log') or 'no generado'}"
+            ),
+            f"- A/B/C por fecha: {plot_paths.get('floor_facets') or 'no generado'}",
+            (
+                "- posiciones 1-9 por fecha: "
+                f"{plot_paths.get('position_facets') or 'no generado'}"
+            ),
             "",
             (
                 "Datos: "
@@ -772,6 +856,52 @@ class AnalisisTrayGUI(tk.Tk):
                 f"log_raw={self._format_value(resumen['raw_log_ratio_mean'])} "
                 f"(p={self._format_p_value(resumen['raw_log_ratio_mean_p_value'])})"
             ),
+        ]
+
+        if assumption_tests is not None and not assumption_tests.empty:
+            lineas.append("Supuestos (Shapiro residuos | Brown-Forsythe días):")
+            for _, fila in assumption_tests.iterrows():
+                lineas.append(
+                    "- "
+                    f"{fila['response_metric']}: "
+                    f"W={self._format_value(fila['shapiro_w'], 4)}, "
+                    f"p={self._format_p_value(fila['shapiro_p_value'])} | "
+                    f"F={self._format_value(fila['brown_forsythe_statistic'], 4)}, "
+                    f"p={self._format_p_value(fila['brown_forsythe_p_value'])}"
+                )
+
+        if floor_tests is not None and not floor_tests.empty:
+            lineas.append("Comparación pisos A/B/C ajustada por día (HC3):")
+            for _, fila in floor_tests.iterrows():
+                lineas.append(
+                    "- "
+                    f"{fila['response_metric']}: "
+                    f"F={self._format_value(fila['statistic'], 4)}, "
+                    f"p={self._format_p_value(fila['p_value'])}"
+                )
+
+        if position_group_tests is not None and not position_group_tests.empty:
+            lineas.append("Comparación posiciones agrupadas ajustada por día (HC3):")
+            for _, fila in position_group_tests.iterrows():
+                lineas.append(
+                    "- "
+                    f"{fila['comparison']} / {fila['response_metric']}: "
+                    f"F={self._format_value(fila['statistic'], 4)}, "
+                    f"p={self._format_p_value(fila['p_value'])}"
+                )
+
+        if tray_cell_tests is not None and not tray_cell_tests.empty:
+            lineas.append("Comparación A1-C9 ajustada por día (HC3):")
+            for _, fila in tray_cell_tests.iterrows():
+                lineas.append(
+                    "- "
+                    f"{fila['response_metric']}: "
+                    f"F={self._format_value(fila['statistic'], 4)}, "
+                    f"p={self._format_p_value(fila['p_value'])}"
+                )
+
+        lineas.extend(
+            [
             (
                 "Efecto día: "
                 f"delta p={self._format_p_value(resumen['day_raw_delta_p_value'])} | "
@@ -802,7 +932,8 @@ class AnalisisTrayGUI(tk.Tk):
                 f"espacio {self._describe_negative_control_signal(spatial_p_values)}."
             ),
             "",
-        ]
+            ]
+        )
 
         if result["warnings"]:
             lineas.append("Advertencias:")
@@ -815,11 +946,77 @@ class AnalisisTrayGUI(tk.Tk):
         self.summary_widget.insert("1.0", "\n".join(lineas))
         self.summary_widget.configure(state=tk.DISABLED)
 
+    def render_tray_combined_summary(self, result: dict) -> None:
+        lineas = [
+            "Tray combinado",
+            f"Experimentos: {', '.join(result['exp_ids'])}",
+            f"Salida: {result['output_path']}",
+            f"Filas totales: {result['total_rows']}",
+            "",
+            "Filas por experimento:",
+        ]
+        for exp_id, rows in result["rows_by_exp_id"].items():
+            lineas.append(f"- {exp_id}: {rows}")
+
+        self.summary_widget.configure(state=tk.NORMAL)
+        self.summary_widget.delete("1.0", tk.END)
+        self.summary_widget.insert("1.0", "\n".join(lineas))
+        self.summary_widget.configure(state=tk.DISABLED)
+
     def _es_nan(self, valor) -> bool:
         try:
             return valor != valor
         except Exception:
             return False
+
+    def build_selected_tray_combined(self, exp_ids: list[str]) -> dict:
+        frames = []
+        rows_by_exp_id = {}
+
+        for trays_path in AnalisisTrays.descubrir_trays(exp_ids=exp_ids):
+            exp_id = trays_path.parent.name
+            datos = pd.read_csv(trays_path, dtype=str)
+            faltantes = AnalisisTrays.REQUIRED_TRAY_COLUMNS - set(datos.columns)
+            if faltantes:
+                raise ValueError(
+                    f"El archivo '{trays_path}' no tiene las columnas requeridas: "
+                    + ", ".join(sorted(faltantes))
+                )
+
+            datos = datos.loc[:, AnalisisTrays.TRAY_COLUMNS].copy()
+            frames.append(datos)
+            rows_by_exp_id[exp_id] = len(datos)
+
+        combinado = pd.concat(frames, ignore_index=True)
+        output_path = AnalisisTrays.EXPERIMENTS_DIR / "tray_combined.csv"
+        combinado.to_csv(output_path, index=False)
+
+        print(f"Archivo combinado generado: {output_path}")
+        print(f"Experimentos: {', '.join(exp_ids)}")
+        print(f"Filas totales: {len(combinado)}")
+
+        return {
+            "exp_ids": exp_ids,
+            "output_path": output_path,
+            "total_rows": len(combinado),
+            "rows_by_exp_id": rows_by_exp_id,
+        }
+
+    def create_selected_tray_combined(self) -> None:
+        exp_ids = self.require_selected_experiments(
+            "crear tray_combined.csv",
+            minimum=2,
+        )
+        if exp_ids is None:
+            return
+
+        result = self.execute_with_log(
+            f"Crear tray_combined.csv ({len(exp_ids)} experimentos)",
+            lambda: self.build_selected_tray_combined(exp_ids),
+        )
+        if result is not None:
+            self.last_result = result
+            self.render_tray_combined_summary(result)
 
     def run_selected_analysis(self) -> None:
         exp_ids = self.require_selected_experiments("analizar", minimum=1)
@@ -828,7 +1025,9 @@ class AnalisisTrayGUI(tk.Tk):
 
         if len(exp_ids) == 1:
             title = f"Analisis de trays {exp_ids[0]}"
-            callback = lambda: AnalisisTrays.run_analysis(exp_id=exp_ids[0], verbose=True)
+            callback = lambda: AnalisisTrays.run_analysis(
+                exp_id=exp_ids[0], verbose=True
+            )
         else:
             title = f"Analisis de trays seleccionados ({len(exp_ids)})"
             callback = lambda: AnalisisTrays.run_analysis(exp_ids=exp_ids, verbose=True)

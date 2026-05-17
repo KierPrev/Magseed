@@ -1,0 +1,13 @@
+analysis_scope,response_metric,group_column,group_value,method,statistic,p_value,q_value_fdr_bh,reject_null_fdr_bh,n_dates,n_obs,notes
+negative_control_combined,pct_change,floor,A,kruskal,3.7918871252204553,0.15017656717976616,0.3003531343595323,False,3,27,
+negative_control_combined,pct_change,floor,B,kruskal,2.1269841269841265,0.3452480746154008,0.5178721119231012,False,3,27,
+negative_control_combined,pct_change,floor,C,kruskal,4.511463844797177,0.10479681252467864,0.2719032320727126,False,3,27,
+negative_control_combined,pct_change,position,1,kruskal,4.622222222222227,0.09915102252982502,0.2719032320727126,False,3,9,
+negative_control_combined,pct_change,position,2,kruskal,0.62222222222222,0.7326324677392166,0.7326324677392166,False,3,9,
+negative_control_combined,pct_change,position,3,kruskal,5.422222222222224,0.06646291798667311,0.2719032320727126,False,3,9,
+negative_control_combined,pct_change,position,4,kruskal,3.200000000000003,0.2018965179946551,0.34610831656226587,False,3,9,
+negative_control_combined,pct_change,position,5,kruskal,5.066666666666663,0.07939393227707836,0.2719032320727126,False,3,9,
+negative_control_combined,pct_change,position,6,kruskal,1.1555555555555515,0.5611439686474908,0.639977694010944,False,3,9,
+negative_control_combined,pct_change,position,7,kruskal,1.1555555555555586,0.5611439686474888,0.639977694010944,False,3,9,
+negative_control_combined,pct_change,position,8,kruskal,4.355555555555554,0.11329301336363026,0.2719032320727126,False,3,9,
+negative_control_combined,pct_change,position,9,kruskal,1.0666666666666664,0.5866462195100319,0.639977694010944,False,3,9,

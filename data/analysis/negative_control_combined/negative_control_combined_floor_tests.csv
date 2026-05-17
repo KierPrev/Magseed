@@ -1,0 +1,4 @@
+analysis_scope,source_exp_id,response_metric,comparison,group_column,formula,method,term,statistic,statistic_name,p_value,df_num,df_denom,n_obs,rsquared,adj_rsquared,notes
+negative_control_combined,"20260404,20260428,20260507",raw_delta_weight,floor_A_B_C_adjusted_by_day,floor,raw_delta_weight ~ C(exp_id) + C(floor),ols_wald_hc3,C(floor),4.7869747059120655,F,0.01101378559166534,2.0,76.0,81,0.13265671201120544,0.08700706527495317,
+negative_control_combined,"20260404,20260428,20260507",pct_change,floor_A_B_C_adjusted_by_day,floor,pct_change ~ C(exp_id) + C(floor),ols_wald_hc3,C(floor),3.9745658284463037,F,0.022819209287245595,2.0,76.0,81,0.12952418534413435,0.08370966878329933,
+negative_control_combined,"20260404,20260428,20260507",raw_log_ratio,floor_A_B_C_adjusted_by_day,floor,raw_log_ratio ~ C(exp_id) + C(floor),ols_wald_hc3,C(floor),4.068628655036668,F,0.020958450623835875,2.0,76.0,81,0.13190151805399064,0.08621212426735858,
