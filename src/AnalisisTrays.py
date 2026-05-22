@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import tempfile
+import unicodedata
 import warnings
 from pathlib import Path
 from typing import Any
@@ -38,7 +40,7 @@ TRAY_COLUMNS = [
     "post_weight",
 ]
 REQUIRED_TRAY_COLUMNS = set(TRAY_COLUMNS)
-METADATA_COLUMNS = ["exp_id", "magnet", "magnet_pole"]
+METADATA_COLUMNS = ["exp_id", "experiment_type", "magnet_pole"]
 REQUIRED_METADATA_COLUMNS = set(METADATA_COLUMNS)
 SUMMARY_METRICS = (
     "pre_weight",
@@ -52,6 +54,12 @@ POSITION_LEFT_CENTER_RIGHT_ORDER = ["izquierda", "centro", "derecha"]
 POSITION_FRONT_MIDDLE_BACK_ORDER = ["frente", "medio", "atras"]
 TRAY_CELL_ORDER = [f"{floor}{position}" for floor in FLOOR_ORDER for position in range(1, 10)]
 MAGNET_NONE_VALUE = "NONE"
+NEGATIVE_CONTROL_EXPERIMENT_TYPES = {"CTRL_NEGATIVO", MAGNET_NONE_VALUE}
+NON_MAGNETIC_EXPERIMENT_TYPES = {
+    "CTRL_NEGATIVO",
+    "CTRL_POSITIVO",
+    MAGNET_NONE_VALUE,
+}
 MAGNETIC_TREATMENT_FLOORS = tuple(range(1, 9))
 CONTROL_TREATMENT_FLOOR = 9
 METRIC_YLABELS = {
@@ -144,6 +152,12 @@ def validar_exp_id(exp_id: str) -> str:
     return valor
 
 
+def normalizar_experiment_type(value: str) -> str:
+    value = unicodedata.normalize("NFKD", str(value).strip().upper())
+    value = value.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"_+", "_", re.sub(r"\s+", "_", value))
+
+
 def descubrir_trays(
     exp_id: str | None = None,
     exp_ids: list[str] | tuple[str, ...] | None = None,
@@ -186,6 +200,9 @@ def leer_metadata_global() -> tuple[pd.DataFrame, list[str]]:
         return pd.DataFrame(columns=METADATA_COLUMNS), advertencias
 
     metadata = pd.read_csv(METADATA_PATH, dtype=str).fillna("")
+    if "experiment_type" not in metadata.columns and "magnet" in metadata.columns:
+        metadata["experiment_type"] = metadata["magnet"]
+
     faltantes = REQUIRED_METADATA_COLUMNS - set(metadata.columns)
     if faltantes:
         advertencias.append(
@@ -197,7 +214,12 @@ def leer_metadata_global() -> tuple[pd.DataFrame, list[str]]:
 
     metadata = metadata.loc[:, METADATA_COLUMNS].copy()
     metadata["exp_id"] = metadata["exp_id"].astype(str).str.strip()
-    metadata["magnet"] = metadata["magnet"].astype(str).str.strip().str.upper()
+    metadata["experiment_type"] = (
+        metadata["experiment_type"]
+        .astype(str)
+        .map(normalizar_experiment_type)
+    )
+    metadata["magnet"] = metadata["experiment_type"]
     metadata["magnet_pole"] = (
         metadata["magnet_pole"].astype(str).str.strip().str.upper()
     )
@@ -226,7 +248,10 @@ def construir_etiqueta_tratamiento(fila: pd.Series) -> str:
     if pd.isna(treatment_floor):
         return ""
 
-    if fila["has_metadata"] and fila["magnet"] == MAGNET_NONE_VALUE:
+    if (
+        fila["has_metadata"]
+        and fila["experiment_type"] in NEGATIVE_CONTROL_EXPERIMENT_TYPES
+    ):
         return "Control negativo"
 
     if fila["has_active_magnet"] and treatment_floor in MAGNETIC_TREATMENT_FLOORS:
@@ -239,12 +264,15 @@ def construir_etiqueta_tratamiento(fila: pd.Series) -> str:
 
 
 def enriquecer_tratamientos(enriched: pd.DataFrame) -> pd.DataFrame:
-    enriched["has_active_magnet"] = enriched["has_metadata"] & enriched["magnet"].ne(
-        MAGNET_NONE_VALUE
-    )
+    enriched["has_active_magnet"] = enriched["has_metadata"] & ~enriched[
+        "experiment_type"
+    ].isin(NON_MAGNETIC_EXPERIMENT_TYPES)
 
-    es_control_negativo = enriched["has_metadata"] & enriched["magnet"].eq(
-        MAGNET_NONE_VALUE
+    es_control_negativo = enriched["has_metadata"] & enriched["experiment_type"].isin(
+        NEGATIVE_CONTROL_EXPERIMENT_TYPES
+    )
+    es_control_positivo = enriched["has_metadata"] & enriched["experiment_type"].eq(
+        "CTRL_POSITIVO"
     )
     es_tratamiento_magnetico = enriched["has_active_magnet"] & enriched[
         "treatment_floor"
@@ -255,7 +283,9 @@ def enriquecer_tratamientos(enriched: pd.DataFrame) -> pd.DataFrame:
 
     treatment_role = pd.Series(pd.NA, index=enriched.index, dtype="string")
     treatment_role.loc[es_tratamiento_magnetico] = "magnetic"
-    treatment_role.loc[es_control_interno | es_control_negativo] = "control"
+    treatment_role.loc[
+        es_control_interno | es_control_negativo | es_control_positivo
+    ] = "control"
     enriched["treatment_role"] = treatment_role
     enriched["treatment_role_label"] = treatment_role.map(
         {
@@ -280,7 +310,7 @@ def enriquecer_tratamientos(enriched: pd.DataFrame) -> pd.DataFrame:
 
 def es_experimento_control_negativo(data: pd.DataFrame) -> bool:
     return bool(data["has_metadata"].all()) and bool(
-        data["magnet"].eq(MAGNET_NONE_VALUE).all()
+        data["experiment_type"].isin(NEGATIVE_CONTROL_EXPERIMENT_TYPES).all()
     )
 
 
@@ -421,16 +451,20 @@ def cargar_experimento(
     datos["exp_dir"] = str(trays_path.parent)
 
     enriched = datos.merge(metadata, on="exp_id", how="left")
-    enriched["magnet"] = (
-        enriched["magnet"].fillna("").astype(str).str.strip().str.upper()
+    enriched["experiment_type"] = (
+        enriched["experiment_type"]
+        .fillna("")
+        .astype(str)
+        .map(normalizar_experiment_type)
     )
+    enriched["magnet"] = enriched["experiment_type"]
     enriched["magnet_pole"] = (
         enriched["magnet_pole"].fillna("").astype(str).str.strip().str.upper()
     )
 
-    enriched["has_metadata"] = enriched["magnet"].ne("") & enriched["magnet_pole"].ne(
-        ""
-    )
+    enriched["has_metadata"] = enriched["experiment_type"].ne("") & enriched[
+        "magnet_pole"
+    ].ne("")
     enriched = enriquecer_tratamientos(enriched)
     enriched["has_complete_weights"] = (
         enriched["pre_weight"].notna() & enriched["post_weight"].notna()
@@ -588,6 +622,7 @@ def resumen_grupo(
                 "group_by": group_by,
                 "response_metric": metrica,
                 "exp_id": pd.NA,
+                "experiment_type": pd.NA,
                 "magnet": pd.NA,
                 "magnet_pole": pd.NA,
                 "treatment_floor": pd.NA,
@@ -681,8 +716,8 @@ def resumen_global(data: pd.DataFrame) -> pd.DataFrame:
             data,
             analysis_scope="global",
             source_exp_id="all",
-            group_by="magnet",
-            group_columns=["magnet"],
+            group_by="experiment_type",
+            group_columns=["experiment_type"],
         ),
         resumen_grupo(
             data,
@@ -695,8 +730,8 @@ def resumen_global(data: pd.DataFrame) -> pd.DataFrame:
             data,
             analysis_scope="global",
             source_exp_id="all",
-            group_by="magnet_and_pole",
-            group_columns=["magnet", "magnet_pole"],
+            group_by="experiment_type_and_pole",
+            group_columns=["experiment_type", "magnet_pole"],
         ),
         resumen_grupo(
             data,
@@ -730,7 +765,7 @@ def correlaciones_experimento(data: pd.DataFrame, exp_id: str) -> pd.DataFrame:
         if len(subset) < 3:
             if not bool(data["has_active_magnet"].any()):
                 notes = (
-                    "El experimento es control negativo (magnet=NONE), "
+                    "El experimento no tiene tratamiento magnetico activo, "
                     "asi que no hay intensidad magnetica para correlacionar."
                 )
             else:
@@ -1070,7 +1105,7 @@ def modelos_experimento(data: pd.DataFrame) -> pd.DataFrame:
         )
     else:
         reason = (
-            "El experimento es control negativo (magnet=NONE), asi que no hay "
+            "El experimento no tiene tratamiento magnetico activo, asi que no hay "
             "intensidad magnetica que modelar."
             if not bool(data["has_active_magnet"].any())
             else "No hay suficientes niveles de intensidad magnetica para ajustar el modelo."
@@ -3030,7 +3065,7 @@ def run_negative_control_analysis(
         if not es_experimento_control_negativo(enriched):
             raise ValueError(
                 f"El experimento {trays_path.parent.name} no es control negativo "
-                "(metadata magnet debe ser NONE)."
+                "(metadata experiment_type debe ser CTRL_NEGATIVO)."
             )
         models = modelos_experimento(enriched)
         summary = resumen_experimento(enriched)
@@ -3186,7 +3221,7 @@ def construir_resumen_experimento(
     models: pd.DataFrame,
 ) -> dict[str, Any]:
     exp_dir = Path(str(enriched["exp_dir"].iloc[0]))
-    magnet = str(enriched["magnet"].iloc[0]).strip()
+    experiment_type = str(enriched["experiment_type"].iloc[0]).strip()
     magnet_pole = str(enriched["magnet_pole"].iloc[0]).strip()
     has_complete_metadata = bool(enriched["has_metadata"].all())
     has_active_magnet = bool(enriched["has_active_magnet"].any())
@@ -3257,17 +3292,18 @@ def construir_resumen_experimento(
     if is_negative_control:
         experiment_kind_label = "Control negativo"
     elif has_active_magnet:
-        experiment_kind_label = f"Tratamiento magnetico ({magnet}/{magnet_pole})"
+        experiment_kind_label = f"Tratamiento magnetico ({experiment_type}/{magnet_pole})"
     elif has_complete_metadata:
         experiment_kind_label = (
-            f"Experimento sin magnet activo ({magnet}/{magnet_pole})"
+            f"Experimento sin tratamiento magnetico activo ({experiment_type}/{magnet_pole})"
         )
     else:
         experiment_kind_label = "Metadata incompleta"
 
     return {
         "exp_id": str(enriched["exp_id"].iloc[0]),
-        "magnet": magnet,
+        "experiment_type": experiment_type,
+        "magnet": experiment_type,
         "magnet_pole": magnet_pole,
         "is_negative_control": is_negative_control,
         "experiment_kind_label": experiment_kind_label,

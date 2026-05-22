@@ -1,5 +1,7 @@
 import importlib
 import io
+import re
+import unicodedata
 from pathlib import Path
 import traceback
 import tkinter as tk
@@ -18,6 +20,17 @@ DEFAULT_IQR_FACTOR = 1.5
 DEFAULT_OBJETO = "Radicula"
 DEFAULT_MEDIDA = "Largo_cm"
 DEFAULT_EXPERIMENTS_DIR = "./data/experiments"
+NON_MAGNETIC_EXPERIMENT_TYPES = {"CTRL_NEGATIVO", "CTRL_POSITIVO", "NONE"}
+
+
+def normalizar_experiment_type(value: str) -> str:
+    value = unicodedata.normalize("NFKD", str(value).strip().upper())
+    value = value.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"_+", "_", re.sub(r"\s+", "_", value))
+
+
+def metadata_experiment_type(row) -> str:
+    return normalizar_experiment_type(row.get("experiment_type") or row.get("magnet") or "")
 
 
 class TextWidgetWriter(io.StringIO):
@@ -408,8 +421,11 @@ class PipelineGUI(tk.Tk):
                         metadata.get("exp_id", "").astype(str).str.strip() == exp_id
                     ]
                     if not metadata_exp.empty:
-                        magnet = str(metadata_exp.iloc[0].get("magnet", "")).strip().upper()
-                        active_magnet = bool(magnet and magnet != "NONE")
+                        experiment_type = metadata_experiment_type(metadata_exp.iloc[0])
+                        active_magnet = bool(
+                            experiment_type
+                            and experiment_type not in NON_MAGNETIC_EXPERIMENT_TYPES
+                        )
 
                 if active_magnet:
                     df["Grupo"] = df["treatment_floor"].apply(

@@ -22,8 +22,8 @@ SORT_LABELS = {
     "Piso de tratamiento (1, 1, 1, 2...)": SORT_BY_TREATMENT,
 }
 DEFAULT_SORT_LABEL = "Posición (A1, A2, A3...)"
-MAX_TREATMENT_FLOORS = 99
-MAX_REPLICAS = 26
+MAX_TREATMENT_FLOORS = Asignador.MAX_TREATMENT_FLOORS
+MAX_REPLICAS = Asignador.MAX_REPLICAS
 
 
 class AsignadorGUI(tk.Tk):
@@ -36,7 +36,9 @@ class AsignadorGUI(tk.Tk):
         self.configure(bg=BG_COLOR)
 
         self.current_data = []
+        self.current_treatments = []
         self.selected_position = ""
+        self.selected_treatment_id = ""
         self.tray_cells = {}
         self.treatment_floor_cell = None
         self.location_panel_host = None
@@ -45,7 +47,7 @@ class AsignadorGUI(tk.Tk):
 
         hoy = date.today().strftime("%Y%m%d")
         self.exp_id_var = tk.StringVar(value=hoy)
-        self.magnet_var = tk.StringVar()
+        self.experiment_type_var = tk.StringVar(value="CTRL_NEGATIVO")
         self.magnet_pole_var = tk.StringVar(value="NONE")
         self.treatment_floors_var = tk.StringVar(
             value=str(Asignador.DEFAULT_TREATMENT_FLOORS)
@@ -61,6 +63,9 @@ class AsignadorGUI(tk.Tk):
         self.current_post_var = tk.StringVar(value="-")
         self.new_pre_var = tk.StringVar()
         self.new_post_var = tk.StringVar()
+        self.treatment_id_var = tk.StringVar()
+        self.treatment_value_var = tk.StringVar()
+        self.treatment_type_var = tk.StringVar()
         self.sort_var = tk.StringVar(value=DEFAULT_SORT_LABEL)
         self.status_var = tk.StringVar(
             value="Listo para trabajar. Elegí un experimento o cargá uno existente."
@@ -196,9 +201,17 @@ class AsignadorGUI(tk.Tk):
         top_row.grid(row=1, column=0, sticky="ew", pady=(20, 18))
         top_row.columnconfigure(0, weight=3)
         top_row.columnconfigure(1, weight=2)
+        top_row.columnconfigure(2, weight=2)
 
-        self._build_experiment_card(top_row).grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        self._build_metadata_card(top_row).grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        self._build_experiment_card(top_row).grid(
+            row=0, column=0, sticky="nsew", padx=(0, 10)
+        )
+        self._build_metadata_card(top_row).grid(
+            row=0, column=1, sticky="nsew", padx=(10, 10)
+        )
+        self._build_treatment_card(top_row).grid(
+            row=0, column=2, sticky="nsew", padx=(10, 0)
+        )
 
         main_row = ttk.Frame(container, style="App.TFrame")
         main_row.grid(row=2, column=0, sticky="nsew")
@@ -309,12 +322,20 @@ class AsignadorGUI(tk.Tk):
             wraplength=300,
         ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 16))
 
-        ttk.Label(frame, text="Magnet", style="Body.TLabel").grid(
+        ttk.Label(frame, text="Tipo", style="Body.TLabel").grid(
             row=2, column=0, sticky="w", pady=(0, 8)
         )
-        ttk.Entry(frame, textvariable=self.magnet_var, font=("Helvetica", 11)).grid(
+        self.experiment_type_combo = ttk.Combobox(
+            frame,
+            textvariable=self.experiment_type_var,
+            values=tuple(Asignador.obtener_experiment_types_disponibles()),
+            state="normal",
+            font=("Helvetica", 11),
+        )
+        self.experiment_type_combo.grid(
             row=2, column=1, sticky="ew", pady=(0, 8)
         )
+        self.experiment_type_combo.bind("<FocusIn>", self._refresh_experiment_type_options)
 
         ttk.Label(frame, text="Magnet pole", style="Body.TLabel").grid(
             row=3, column=0, sticky="w", pady=(0, 8)
@@ -332,6 +353,63 @@ class AsignadorGUI(tk.Tk):
             text="Agregar al metadata global",
             command=self._create_metadata,
         ).grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+
+        return frame
+
+    def _build_treatment_card(self, parent):
+        frame = ttk.Frame(parent, padding=20, style="Card.TFrame")
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(2, weight=1)
+
+        ttk.Label(frame, text="Treatments", style="Section.TLabel").grid(
+            row=0, column=0, columnspan=2, sticky="w"
+        )
+        ttk.Label(
+            frame,
+            text="Se guarda en treatment.csv dentro del experimento cargado.",
+            style="Muted.TLabel",
+            wraplength=300,
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 12))
+
+        columns = ("treatment_id", "treatment_value", "treatment_type")
+        self.treatment_tree = ttk.Treeview(
+            frame,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+            height=4,
+        )
+        self.treatment_tree.heading("treatment_id", text="ID")
+        self.treatment_tree.heading("treatment_value", text="Valor")
+        self.treatment_tree.heading("treatment_type", text="Tipo")
+        self.treatment_tree.column("treatment_id", width=52, anchor="center")
+        self.treatment_tree.column("treatment_value", width=90, anchor="center")
+        self.treatment_tree.column("treatment_type", width=120, anchor="center")
+        self.treatment_tree.grid(row=2, column=0, columnspan=2, sticky="nsew")
+        self.treatment_tree.bind("<<TreeviewSelect>>", self._on_treatment_select)
+
+        ttk.Label(frame, text="Valor", style="Body.TLabel").grid(
+            row=3, column=0, sticky="w", pady=(12, 4)
+        )
+        ttk.Label(frame, text="Tipo", style="Body.TLabel").grid(
+            row=3, column=1, sticky="w", pady=(12, 4), padx=(8, 0)
+        )
+        ttk.Entry(
+            frame,
+            textvariable=self.treatment_value_var,
+            font=("Helvetica", 11),
+        ).grid(row=4, column=0, sticky="ew")
+        ttk.Entry(
+            frame,
+            textvariable=self.treatment_type_var,
+            font=("Helvetica", 11),
+        ).grid(row=4, column=1, sticky="ew", padx=(8, 0))
+
+        ttk.Button(
+            frame,
+            text="Guardar treatment",
+            command=self._save_treatment,
+        ).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(12, 0))
 
         return frame
 
@@ -576,9 +654,9 @@ class AsignadorGUI(tk.Tk):
         grid_frame.grid(row=0, column=0, sticky="n")
 
         self.tray_cells = {}
-        floors = Asignador.generar_floors(cantidad_replicas)
-        font_size = 13 if cantidad_treatment_floors <= 9 else 11
-        cell_width = 5 if cantidad_treatment_floors <= 9 else 4
+        floors = Asignador.generar_floors(Asignador.MAX_PHYSICAL_FLOORS)
+        font_size = 13
+        cell_width = 5
 
         header_font = ("Helvetica", max(font_size - 1, 9), "bold")
         cell_font = ("Helvetica", font_size, "bold")
@@ -591,7 +669,7 @@ class AsignadorGUI(tk.Tk):
             font=header_font,
         ).grid(row=0, column=0, padx=4, pady=4)
 
-        for column in range(1, cantidad_treatment_floors + 1):
+        for column in range(1, Asignador.POSITIONS_PER_FLOOR + 1):
             tk.Label(
                 grid_frame,
                 text=str(column),
@@ -610,7 +688,7 @@ class AsignadorGUI(tk.Tk):
                 font=header_font,
             ).grid(row=row, column=0, padx=4, pady=4, sticky="e")
 
-            for position in range(1, cantidad_treatment_floors + 1):
+            for position in range(1, Asignador.POSITIONS_PER_FLOOR + 1):
                 pos = f"{floor}{position}"
                 cell = tk.Label(
                     grid_frame,
@@ -664,11 +742,9 @@ class AsignadorGUI(tk.Tk):
 
     def _safe_get_tray_config(self):
         try:
-            treatment_floors = Asignador.validar_cantidad(
-                "treatment floors", self.treatment_floors_var.get()
-            )
-            replicas = Asignador.validar_cantidad(
-                "réplicas", self.replicas_var.get()
+            treatment_floors, replicas = Asignador.validar_configuracion_trays(
+                self.treatment_floors_var.get(),
+                self.replicas_var.get(),
             )
         except ValueError:
             return None
@@ -676,10 +752,10 @@ class AsignadorGUI(tk.Tk):
         return treatment_floors, replicas
 
     def _get_tray_config(self) -> tuple[int, int]:
-        treatment_floors = Asignador.validar_cantidad(
-            "treatment floors", self.treatment_floors_var.get()
+        treatment_floors, replicas = Asignador.validar_configuracion_trays(
+            self.treatment_floors_var.get(),
+            self.replicas_var.get(),
         )
-        replicas = Asignador.validar_cantidad("réplicas", self.replicas_var.get())
         self.treatment_floors_var.set(str(treatment_floors))
         self.replicas_var.set(str(replicas))
         return treatment_floors, replicas
@@ -770,10 +846,96 @@ class AsignadorGUI(tk.Tk):
             exp_id = self._get_exp_id()
             archivo = Asignador.crear_metadata_csv_con_valores(
                 exp_id,
-                self.magnet_var.get(),
+                self.experiment_type_var.get(),
                 self.magnet_pole_var.get(),
             )
+            self.experiment_type_var.set(
+                Asignador.normalizar_experiment_type(self.experiment_type_var.get())
+            )
+            self._refresh_experiment_type_options()
             self._set_status(f"Se agregó metadata del experimento en {archivo}.")
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _refresh_experiment_type_options(self, _event=None):
+        if hasattr(self, "experiment_type_combo"):
+            self.experiment_type_combo.configure(
+                values=tuple(Asignador.obtener_experiment_types_disponibles())
+            )
+
+    def _populate_treatment_tree(self):
+        for item in self.treatment_tree.get_children():
+            self.treatment_tree.delete(item)
+
+        for fila in self.current_treatments:
+            treatment_id = str(fila["treatment_id"])
+            self.treatment_tree.insert(
+                "",
+                "end",
+                iid=treatment_id,
+                values=(
+                    treatment_id,
+                    fila["treatment_value"] or "-",
+                    fila["treatment_type"] or "-",
+                ),
+            )
+
+        if self.current_treatments:
+            selected = self.selected_treatment_id or str(
+                self.current_treatments[0]["treatment_id"]
+            )
+            if self.treatment_tree.exists(selected):
+                self.treatment_tree.selection_set(selected)
+                self.treatment_tree.focus(selected)
+                self._sync_treatment_details(selected)
+
+    def _on_treatment_select(self, _event=None):
+        selected = self.treatment_tree.selection()
+        if selected:
+            self._sync_treatment_details(selected[0])
+
+    def _sync_treatment_details(self, treatment_id: str):
+        fila = next(
+            (
+                item
+                for item in self.current_treatments
+                if str(item["treatment_id"]) == str(treatment_id)
+            ),
+            None,
+        )
+        if fila is None:
+            self.selected_treatment_id = ""
+            self.treatment_id_var.set("")
+            self.treatment_value_var.set("")
+            self.treatment_type_var.set("")
+            return
+
+        self.selected_treatment_id = str(fila["treatment_id"])
+        self.treatment_id_var.set(self.selected_treatment_id)
+        self.treatment_value_var.set(fila["treatment_value"])
+        self.treatment_type_var.set(fila["treatment_type"])
+
+    def _save_treatment(self):
+        if not self.current_data:
+            self._show_error("Primero cargá un experimento con bandejas.")
+            return
+
+        treatment_id = self.selected_treatment_id
+        if not treatment_id:
+            self._show_error("Primero seleccioná un treatment.")
+            return
+
+        try:
+            exp_id = self._get_exp_id()
+            resultado = Asignador.actualizar_treatment_en_id(
+                exp_id,
+                treatment_id,
+                self.treatment_value_var.get(),
+                self.treatment_type_var.get(),
+            )
+            self.current_treatments = resultado["datos"]
+            self._populate_treatment_tree()
+            self._set_status(f"Se guardó treatment_id {treatment_id}.")
         except Exception as exc:
             self._show_error(str(exc))
 
@@ -782,6 +944,7 @@ class AsignadorGUI(tk.Tk):
             exp_id = self._get_exp_id()
             estado = Asignador.obtener_estado_experimento(exp_id)
             self.current_data = estado["datos"]
+            self.current_treatments = estado["treatments"]
             self.loaded_config = estado["configuracion"]
             self._set_tray_config(
                 self.loaded_config["cantidad_treatment_floors"],
@@ -789,6 +952,7 @@ class AsignadorGUI(tk.Tk):
             )
             self._refresh_location_panel(force=True)
             self._populate_tree()
+            self._populate_treatment_tree()
 
             sugerida = estado["siguiente_posicion"]
             self.suggestion_var.set(sugerida)

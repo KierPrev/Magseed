@@ -6,6 +6,7 @@ from datetime import date, datetime
 from pathlib import Path
 import random
 import shutil
+import unicodedata
 
 
 def obtener_base_dir() -> Path:
@@ -18,9 +19,15 @@ def obtener_base_dir() -> Path:
 BASE_DIR = obtener_base_dir()
 EXPERIMENTS_DIR = BASE_DIR / "data" / "experiments"
 TRAYS_FILENAME = "trays.csv"
+TREATMENT_FILENAME = "treatment.csv"
 METADATA_FILENAME = "experiments_metadata.csv"
 DEFAULT_TREATMENT_FLOORS = 9
 DEFAULT_REPLICAS = 3
+MAX_TREATMENT_FLOORS = 9
+MAX_PHYSICAL_FLOORS = 3
+POSITIONS_PER_FLOOR = 9
+MAX_TRAYS = MAX_PHYSICAL_FLOORS * POSITIONS_PER_FLOOR
+MAX_REPLICAS = MAX_TRAYS
 FIELDNAMES = [
     "tray_id",
     "exp_id",
@@ -30,7 +37,16 @@ FIELDNAMES = [
     "pre_weight",
     "post_weight",
 ]
-METADATA_FIELDNAMES = ["exp_id", "magnet", "magnet_pole"]
+TREATMENT_FIELDNAMES = ["treatment_id", "treatment_value", "treatment_type"]
+METADATA_FIELDNAMES = ["exp_id", "experiment_type", "magnet_pole"]
+LEGACY_METADATA_FIELDNAMES = ["exp_id", "magnet", "magnet_pole"]
+DEFAULT_EXPERIMENT_TYPES = [
+    "CTRL_NEGATIVO",
+    "CTRL_POSITIVO",
+    "IMAN_CERAMICA",
+    "IMAN_NEODIMIO",
+    "BOBINA",
+]
 
 
 def validar_exp_id(exp_id: str) -> str:
@@ -71,6 +87,10 @@ def ruta_trays(exp_id: str) -> Path:
     return ruta_experimento(exp_id) / TRAYS_FILENAME
 
 
+def ruta_treatment(exp_id: str) -> Path:
+    return ruta_experimento(exp_id) / TREATMENT_FILENAME
+
+
 def ruta_raw(exp_id: str) -> Path:
     return ruta_experimento(exp_id) / "raw"
 
@@ -93,6 +113,34 @@ def validar_cantidad(nombre: str, valor: Union[str, int]) -> int:
         raise ValueError(f"La cantidad de {nombre} debe ser mayor que cero.")
 
     return cantidad
+
+
+def validar_cantidad_maxima(nombre: str, valor: Union[str, int], maximo: int) -> int:
+    cantidad = validar_cantidad(nombre, valor)
+
+    if cantidad > maximo:
+        raise ValueError(f"La cantidad de {nombre} no puede ser mayor que {maximo}.")
+
+    return cantidad
+
+
+def validar_configuracion_trays(
+    cantidad_treatment_floors: Union[str, int],
+    cantidad_replicas: Union[str, int],
+) -> tuple[int, int]:
+    treatment_floors = validar_cantidad_maxima(
+        "treatment floors", cantidad_treatment_floors, MAX_TREATMENT_FLOORS
+    )
+    replicas = validar_cantidad("réplicas", cantidad_replicas)
+    total_trays = treatment_floors * replicas
+
+    if total_trays > MAX_TRAYS:
+        raise ValueError(
+            f"La configuración genera {total_trays} bandejas, pero solo hay "
+            f"{MAX_TRAYS} posiciones disponibles (A1 a C9)."
+        )
+
+    return treatment_floors, replicas
 
 
 def floor_desde_indice(indice: int) -> str:
@@ -122,84 +170,209 @@ def indice_floor(floor: str) -> int:
 
 
 def generar_floors(cantidad_replicas: int = DEFAULT_REPLICAS) -> list[str]:
-    replicas = validar_cantidad("réplicas", cantidad_replicas)
-    return [floor_desde_indice(indice) for indice in range(replicas)]
+    cantidad_floors = validar_cantidad_maxima(
+        "floors físicos", cantidad_replicas, MAX_PHYSICAL_FLOORS
+    )
+    return [floor_desde_indice(indice) for indice in range(cantidad_floors)]
+
+
+def generar_posiciones_fisicas() -> list[tuple[str, int]]:
+    posiciones = []
+    for floor in generar_floors(MAX_PHYSICAL_FLOORS):
+        for position in range(1, POSITIONS_PER_FLOOR + 1):
+            posiciones.append((floor, position))
+    return posiciones
 
 
 def generar_posiciones(
     cantidad_treatment_floors: int = DEFAULT_TREATMENT_FLOORS,
     cantidad_replicas: int = DEFAULT_REPLICAS,
 ) -> list[tuple[str, int]]:
-    treatment_floors = validar_cantidad(
-        "treatment floors", cantidad_treatment_floors
+    treatment_floors, replicas = validar_configuracion_trays(
+        cantidad_treatment_floors, cantidad_replicas
     )
-    replicas = validar_cantidad("réplicas", cantidad_replicas)
-    posiciones = []
-    for floor in generar_floors(replicas):
-        for position in range(1, treatment_floors + 1):
-            posiciones.append((floor, position))
-    return posiciones
+    total_trays = treatment_floors * replicas
+    return generar_posiciones_fisicas()[:total_trays]
 
 
 def generar_treatment_floors(
     cantidad_treatment_floors: int = DEFAULT_TREATMENT_FLOORS,
     cantidad_replicas: int = DEFAULT_REPLICAS,
 ) -> list[int]:
-    treatment_floors_count = validar_cantidad(
-        "treatment floors", cantidad_treatment_floors
+    treatment_floors_count, replicas = validar_configuracion_trays(
+        cantidad_treatment_floors, cantidad_replicas
     )
-    replicas = validar_cantidad("réplicas", cantidad_replicas)
     treatment_floors = []
     for treatment_floor in range(1, treatment_floors_count + 1):
         treatment_floors.extend([treatment_floor] * replicas)
     return treatment_floors
 
 
-def pedir_metadata_experimento() -> dict[str, str]:
-    while True:
-        magnet = input("Magnet del experimento (ej. M1, M2, CONTROL): ").strip().upper()
-        if magnet == "":
-            print("El magnet no puede estar vacío.\n")
-            continue
-        break
-
-    while True:
-        magnet_pole = input("Magnet pole del experimento (ej. N, S, NONE): ").strip().upper()
-        if magnet_pole == "":
-            print("El magnet_pole no puede estar vacío.\n")
-            continue
-        break
-
-    return {
-        "magnet": magnet,
-        "magnet_pole": magnet_pole,
+def generar_treatment_floors_balanceados(
+    posiciones: list[tuple[str, int]],
+    cantidad_treatment_floors: int = DEFAULT_TREATMENT_FLOORS,
+    cantidad_replicas: int = DEFAULT_REPLICAS,
+) -> list[int]:
+    treatment_floors_count, replicas = validar_configuracion_trays(
+        cantidad_treatment_floors, cantidad_replicas
+    )
+    pendientes = {
+        treatment_floor: replicas
+        for treatment_floor in range(1, treatment_floors_count + 1)
     }
+    usados_por_floor = {
+        floor: {treatment_floor: 0 for treatment_floor in pendientes}
+        for floor, _ in posiciones
+    }
+    asignados = []
+
+    for floor, _ in posiciones:
+        candidatos = [
+            treatment_floor
+            for treatment_floor, cantidad_pendiente in pendientes.items()
+            if cantidad_pendiente > 0
+        ]
+        menor_uso_en_floor = min(
+            usados_por_floor[floor][treatment_floor]
+            for treatment_floor in candidatos
+        )
+        candidatos_balanceados = [
+            treatment_floor
+            for treatment_floor in candidatos
+            if usados_por_floor[floor][treatment_floor] == menor_uso_en_floor
+        ]
+        elegido = random.choice(candidatos_balanceados)
+
+        asignados.append(elegido)
+        pendientes[elegido] -= 1
+        usados_por_floor[floor][elegido] += 1
+
+    return asignados
 
 
-def normalizar_metadata(magnet: str, magnet_pole: str) -> dict[str, str]:
-    magnet_normalizado = magnet.strip().upper()
+def normalizar_experiment_type(experiment_type: str) -> str:
+    valor = unicodedata.normalize("NFKD", experiment_type.strip().upper())
+    valor = valor.encode("ascii", "ignore").decode("ascii")
+    valor = re.sub(r"\s+", "_", valor)
+    valor = re.sub(r"_+", "_", valor)
+
+    if valor == "":
+        raise ValueError("El tipo de experimento no puede estar vacío.")
+
+    return valor
+
+
+def normalizar_magnet_pole(magnet_pole: str) -> str:
     magnet_pole_normalizado = magnet_pole.strip().upper()
-
-    if magnet_normalizado == "":
-        raise ValueError("El magnet no puede estar vacío.")
 
     if magnet_pole_normalizado == "":
         raise ValueError("El magnet_pole no puede estar vacío.")
 
+    return magnet_pole_normalizado
+
+
+def pedir_metadata_experimento() -> dict[str, str]:
+    while True:
+        experiment_type = input(
+            "Tipo de experimento (ej. CTRL_NEGATIVO, IMAN_CERAMICA, BOBINA): "
+        ).strip()
+        try:
+            experiment_type = normalizar_experiment_type(experiment_type)
+        except ValueError as exc:
+            print(f"{exc}\n")
+            continue
+        break
+
+    while True:
+        magnet_pole = input("Magnet pole del experimento (ej. N, S, NONE): ").strip()
+        try:
+            magnet_pole = normalizar_magnet_pole(magnet_pole)
+        except ValueError as exc:
+            print(f"{exc}\n")
+            continue
+        break
+
     return {
-        "magnet": magnet_normalizado,
-        "magnet_pole": magnet_pole_normalizado,
+        "experiment_type": experiment_type,
+        "magnet_pole": magnet_pole,
     }
 
 
-def leer_metadata_experimentos() -> list[dict[str, str]]:
+def normalizar_metadata(experiment_type: str, magnet_pole: str) -> dict[str, str]:
+    return {
+        "experiment_type": normalizar_experiment_type(experiment_type),
+        "magnet_pole": normalizar_magnet_pole(magnet_pole),
+    }
+
+
+def normalizar_fila_metadata(fila: dict[str, str]) -> dict[str, str]:
+    experiment_type = fila.get("experiment_type") or fila.get("magnet") or ""
+    return {
+        "exp_id": fila.get("exp_id", "").strip(),
+        "experiment_type": normalizar_experiment_type(experiment_type),
+        "magnet_pole": normalizar_magnet_pole(fila.get("magnet_pole", "")),
+    }
+
+
+def leer_metadata_experimentos(normalizar=True) -> list[dict[str, str]]:
     archivo = ruta_metadata()
     if not archivo.exists():
         return []
 
     with open(archivo, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        return list(reader)
+        filas = list(reader)
+
+    if not normalizar:
+        return filas
+
+    metadata = []
+    for fila in filas:
+        try:
+            metadata.append(normalizar_fila_metadata(fila))
+        except ValueError:
+            metadata.append(
+                {
+                    "exp_id": fila.get("exp_id", "").strip(),
+                    "experiment_type": (
+                        fila.get("experiment_type") or fila.get("magnet") or ""
+                    ).strip().upper(),
+                    "magnet_pole": fila.get("magnet_pole", "").strip().upper(),
+                }
+            )
+    return metadata
+
+
+def obtener_experiment_types_disponibles() -> list[str]:
+    tipos = set(DEFAULT_EXPERIMENT_TYPES)
+    for fila in leer_metadata_experimentos():
+        experiment_type = fila.get("experiment_type", "").strip()
+        if experiment_type:
+            tipos.add(experiment_type)
+    return sorted(tipos)
+
+
+def migrar_metadata_csv_si_hace_falta() -> None:
+    archivo = ruta_metadata()
+    if not archivo.exists() or archivo.stat().st_size == 0:
+        return
+
+    with open(archivo, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or []
+        filas = list(reader)
+
+    if fieldnames == METADATA_FIELDNAMES:
+        return
+
+    if "experiment_type" not in fieldnames and "magnet" not in fieldnames:
+        return
+
+    metadata = [normalizar_fila_metadata(fila) for fila in filas]
+    with open(archivo, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=METADATA_FIELDNAMES, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(metadata)
 
 
 def asegurar_salto_final_csv(archivo: Path) -> None:
@@ -213,12 +386,15 @@ def asegurar_salto_final_csv(archivo: Path) -> None:
             f.write(b"\n")
 
 
-def crear_metadata_csv_con_valores(exp_id: str, magnet: str, magnet_pole: str) -> Path:
+def crear_metadata_csv_con_valores(
+    exp_id: str, experiment_type: str, magnet_pole: str
+) -> Path:
     exp_id = validar_exp_id(exp_id)
     archivo = ruta_metadata()
 
-    metadata = normalizar_metadata(magnet, magnet_pole)
+    metadata = normalizar_metadata(experiment_type, magnet_pole)
     crear_estructura_experimento(exp_id)
+    migrar_metadata_csv_si_hace_falta()
 
     metadata_existente = leer_metadata_experimentos()
     if any(fila["exp_id"] == exp_id for fila in metadata_existente):
@@ -240,7 +416,7 @@ def crear_metadata_csv_con_valores(exp_id: str, magnet: str, magnet_pole: str) -
         writer.writerow(
             {
                 "exp_id": exp_id,
-                "magnet": metadata["magnet"],
+                "experiment_type": metadata["experiment_type"],
                 "magnet_pole": metadata["magnet_pole"],
             }
         )
@@ -250,16 +426,16 @@ def crear_metadata_csv_con_valores(exp_id: str, magnet: str, magnet_pole: str) -
 
 def crear_metadata_csv(
     exp_id: str,
-    magnet: Optional[str] = None,
+    experiment_type: Optional[str] = None,
     magnet_pole: Optional[str] = None,
 ):
-    if magnet is None or magnet_pole is None:
+    if experiment_type is None or magnet_pole is None:
         metadata = pedir_metadata_experimento()
-        magnet = metadata["magnet"]
+        experiment_type = metadata["experiment_type"]
         magnet_pole = metadata["magnet_pole"]
 
     try:
-        archivo = crear_metadata_csv_con_valores(exp_id, magnet, magnet_pole)
+        archivo = crear_metadata_csv_con_valores(exp_id, experiment_type, magnet_pole)
     except (ValueError, FileExistsError) as exc:
         print(f"{exc}\n")
         return None
@@ -314,16 +490,95 @@ def copiar_fotos_a_experimento(exp_id: str, fotos: list[Union[str, Path]]) -> li
     return copiados
 
 
+def crear_treatment_csv_para_experimento(
+    exp_id: str,
+    cantidad_treatment_floors: int = DEFAULT_TREATMENT_FLOORS,
+    sobrescribir: bool = False,
+) -> Path:
+    exp_id = validar_exp_id(exp_id)
+    treatment_floors_count = validar_cantidad_maxima(
+        "treatment floors", cantidad_treatment_floors, MAX_TREATMENT_FLOORS
+    )
+    crear_estructura_experimento(exp_id)
+    archivo = ruta_treatment(exp_id)
+
+    if archivo.exists() and not sobrescribir:
+        return archivo
+
+    with open(archivo, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=TREATMENT_FIELDNAMES)
+        writer.writeheader()
+        for treatment_id in range(1, treatment_floors_count + 1):
+            writer.writerow(
+                {
+                    "treatment_id": treatment_id,
+                    "treatment_value": "",
+                    "treatment_type": "",
+                }
+            )
+
+    return archivo
+
+
+def leer_treatments(exp_id: str) -> list[dict[str, str]]:
+    exp_id = validar_exp_id(exp_id)
+    archivo = ruta_treatment(exp_id)
+    with open(archivo, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        return sorted(
+            list(reader),
+            key=lambda fila: int(fila["treatment_id"]),
+        )
+
+
+def guardar_treatments(exp_id: str, datos) -> None:
+    exp_id = validar_exp_id(exp_id)
+    archivo = ruta_treatment(exp_id)
+    with open(archivo, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=TREATMENT_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(datos)
+
+
+def actualizar_treatment_en_id(
+    exp_id: str,
+    treatment_id: Union[str, int],
+    treatment_value: str,
+    treatment_type: str,
+) -> dict[str, object]:
+    treatment_id_num = validar_cantidad("treatment_id", treatment_id)
+    datos = leer_treatments(exp_id)
+    fila = next(
+        (
+            item
+            for item in datos
+            if int(item["treatment_id"]) == treatment_id_num
+        ),
+        None,
+    )
+
+    if fila is None:
+        raise LookupError(f"No existe treatment_id {treatment_id_num}.")
+
+    fila["treatment_value"] = treatment_value.strip()
+    fila["treatment_type"] = treatment_type.strip()
+    guardar_treatments(exp_id, datos)
+
+    return {
+        "fila": fila,
+        "datos": datos,
+    }
+
+
 def crear_trays_csv_para_experimento(
     exp_id: str,
     cantidad_treatment_floors: int = DEFAULT_TREATMENT_FLOORS,
     cantidad_replicas: int = DEFAULT_REPLICAS,
 ) -> Path:
     exp_id = validar_exp_id(exp_id)
-    treatment_floors_count = validar_cantidad(
-        "treatment floors", cantidad_treatment_floors
+    treatment_floors_count, replicas = validar_configuracion_trays(
+        cantidad_treatment_floors, cantidad_replicas
     )
-    replicas = validar_cantidad("réplicas", cantidad_replicas)
     crear_estructura_experimento(exp_id)
     archivo = ruta_trays(exp_id)
 
@@ -332,8 +587,11 @@ def crear_trays_csv_para_experimento(
 
     posiciones = generar_posiciones(treatment_floors_count, replicas)
 
-    treatment_floors = generar_treatment_floors(treatment_floors_count, replicas)
-    random.shuffle(treatment_floors)
+    treatment_floors = generar_treatment_floors_balanceados(
+        posiciones,
+        treatment_floors_count,
+        replicas,
+    )
 
     with open(archivo, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
@@ -353,6 +611,7 @@ def crear_trays_csv_para_experimento(
                 }
             )
 
+    crear_treatment_csv_para_experimento(exp_id, treatment_floors_count)
     return archivo
 
 
@@ -436,11 +695,17 @@ def obtener_posiciones_validas(datos) -> set[tuple[str, int]]:
 def obtener_configuracion_trays(datos) -> dict[str, object]:
     posiciones = posiciones_en_orden_desde_datos(datos)
     floors = sorted({floor for floor, _ in posiciones}, key=indice_floor)
-    treatment_floors = sorted({position for _, position in posiciones})
+    treatment_floors = sorted({int(fila["treatment_floor"]) for fila in datos})
+    cantidad_treatment_floors = len(treatment_floors)
+    cantidad_replicas = (
+        len(datos) // cantidad_treatment_floors
+        if cantidad_treatment_floors > 0
+        else 0
+    )
 
     return {
-        "cantidad_replicas": len(floors),
-        "cantidad_treatment_floors": len(treatment_floors),
+        "cantidad_replicas": cantidad_replicas,
+        "cantidad_treatment_floors": cantidad_treatment_floors,
         "floors": floors,
         "posiciones": posiciones,
         "primer_posicion": f"{posiciones[0][0]}{posiciones[0][1]}" if posiciones else "A1",
@@ -462,6 +727,10 @@ def validar_posicion(
     position_num = int(position_entrada)
     if position_num <= 0:
         raise ValueError("La posición debe ser mayor que cero.")
+
+    posiciones_fisicas = set(generar_posiciones_fisicas())
+    if (floor_entrada, position_num) not in posiciones_fisicas:
+        raise ValueError("La posición debe estar dentro del rango físico A1 a C9.")
 
     if posiciones_validas is not None:
         if not posiciones_validas:
@@ -532,10 +801,16 @@ def obtener_estado_experimento(
         )
 
     datos = leer_datos(exp_id)
+    configuracion = obtener_configuracion_trays(datos)
+    crear_treatment_csv_para_experimento(
+        exp_id,
+        configuracion["cantidad_treatment_floors"],
+    )
     return {
         "datos": ordenar_datos(datos),
         "siguiente_posicion": sugerir_siguiente_posicion(datos, ultima_posicion),
-        "configuracion": obtener_configuracion_trays(datos),
+        "configuracion": configuracion,
+        "treatments": leer_treatments(exp_id),
     }
 
 
