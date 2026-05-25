@@ -7,24 +7,70 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-
 REQUIRED_COLUMNS = {"pre_weight", "post_weight", "water_ml"}
 
 
 def load_absorption_data(csv_path: Path) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
 
-    missing = REQUIRED_COLUMNS - set(df.columns)
-    if missing:
+    # Ensure weight columns exist
+    weight_cols = {"pre_weight", "post_weight"}
+    missing_weights = weight_cols - set(df.columns)
+    if missing_weights:
         raise ValueError(
-            f"Faltan columnas requeridas en {csv_path}: {', '.join(sorted(missing))}"
+            f"Faltan columnas de peso requeridas en {csv_path}: {', '.join(sorted(missing_weights))}"
         )
 
     result = df.copy()
-    for column in REQUIRED_COLUMNS:
+    for column in weight_cols:
         result[column] = pd.to_numeric(result[column], errors="coerce")
 
-    result = result.dropna(subset=list(REQUIRED_COLUMNS)).copy()
+    # If water_ml is missing, try to obtain it from a treatment.csv file
+    if "water_ml" not in result.columns:
+        treatment_path = csv_path.parent / "treatment.csv"
+        if not treatment_path.exists():
+            raise ValueError(
+                f"No hay columna 'water_ml' en {csv_path} y no existe {treatment_path} para mapearla."
+            )
+
+        tdf = pd.read_csv(treatment_path)
+        needed = {"treatment_id", "treatment_value"}
+        if not needed <= set(tdf.columns):
+            raise ValueError(
+                f"{treatment_path} debe contener las columnas: {', '.join(sorted(needed))}"
+            )
+
+        if "treatment_floor" not in result.columns:
+            raise ValueError(
+                f"Para mapear agua desde {treatment_path} se necesita la columna 'treatment_floor' en {csv_path}."
+            )
+
+        map_df = tdf[["treatment_id", "treatment_value"]].copy()
+        map_df["treatment_value"] = pd.to_numeric(
+            map_df["treatment_value"], errors="coerce"
+        )
+
+        merged = result.merge(
+            map_df,
+            left_on="treatment_floor",
+            right_on="treatment_id",
+            how="left",
+            suffixes=(None, "_t"),
+        )
+        # Prefer any existing water_ml, otherwise use treatment_value
+        if "water_ml" in merged.columns:
+            merged["water_ml"] = pd.to_numeric(merged["water_ml"], errors="coerce")
+            merged["water_ml"] = merged["water_ml"].fillna(merged["treatment_value"])
+        else:
+            merged["water_ml"] = merged["treatment_value"]
+
+        result = merged
+    else:
+        result["water_ml"] = pd.to_numeric(result["water_ml"], errors="coerce")
+
+    # Keep only rows with numeric weights and water_ml
+    required_now = ["pre_weight", "post_weight", "water_ml"]
+    result = result.dropna(subset=required_now).copy()
     if result.empty:
         raise ValueError(f"No hay filas numericas validas en {csv_path}.")
 
@@ -177,8 +223,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--csv",
         type=Path,
-        default=Path("data/experiments/20260518/trays.csv"),
-        help="Ruta al CSV de trays.",
+        default=None,
+        help="Ruta al CSV de trays. Si no se especifica, usar --date.",
+    )
+    parser.add_argument(
+        "--date",
+        type=str,
+        default=None,
+        help="Fecha del experimento en formato YYYYMMDD. Usado para localizar data/experiments/YYYYMMDD/trays.csv",
     )
     parser.add_argument(
         "--output-dir",
@@ -191,7 +243,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    saved_paths = build_plots(args.csv, args.output_dir)
+    csv_path = args.csv
+    if csv_path is None:
+        if args.date is None:
+            raise SystemExit("Es necesario pasar --csv o --date (YYYYMMDD).")
+        if len(args.date) != 8 or not args.date.isdigit():
+            raise SystemExit(
+                "--date debe tener formato YYYYMMDD, por ejemplo 20260522."
+            )
+        csv_path = Path(f"data/experiments/{args.date}/trays.csv")
+
+    saved_paths = build_plots(csv_path, args.output_dir)
     for output_path in saved_paths:
         print(f"[OK] Plot guardado en: {output_path}")
 
