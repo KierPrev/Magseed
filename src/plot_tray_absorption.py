@@ -216,6 +216,34 @@ def build_plots(csv_path: Path, output_dir: Path | None = None) -> list[Path]:
     return saved_paths
 
 
+def build_plots_from_df(df: pd.DataFrame, output_dir: Path | None = None) -> list[Path]:
+    if output_dir is None:
+        raise ValueError("output_dir must be provided when plotting from a DataFrame")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sns.set_theme(style="whitegrid", context="notebook")
+    plots = [
+        ("water_vs_relative_absorption.png", plot_water_vs_relative_absorption(df)),
+        (
+            "relative_absorption_by_water_boxplot.png",
+            plot_relative_absorption_distribution(df),
+        ),
+        (
+            "pre_weight_vs_absolute_absorption.png",
+            plot_pre_weight_vs_absolute_absorption(df),
+        ),
+    ]
+
+    saved_paths: list[Path] = []
+    for filename, fig in plots:
+        output_path = output_dir / filename
+        fig.savefig(output_path, dpi=200)
+        saved_paths.append(output_path)
+
+    plt.show()
+    return saved_paths
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Genera tres graficos de absorcion para trays.csv."
@@ -228,9 +256,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--date",
+        nargs="+",
         type=str,
         default=None,
-        help="Fecha del experimento en formato YYYYMMDD. Usado para localizar data/experiments/YYYYMMDD/trays.csv",
+        help=(
+            "Una o varias fechas del experimento en formato YYYYMMDD. "
+            "Ejemplo: --date 20260522 20260518. Usado para localizar "
+            "data/experiments/YYYYMMDD/trays.csv"
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -247,13 +280,33 @@ def main() -> None:
     if csv_path is None:
         if args.date is None:
             raise SystemExit("Es necesario pasar --csv o --date (YYYYMMDD).")
-        if len(args.date) != 8 or not args.date.isdigit():
-            raise SystemExit(
-                "--date debe tener formato YYYYMMDD, por ejemplo 20260522."
-            )
-        csv_path = Path(f"data/experiments/{args.date}/trays.csv")
 
-    saved_paths = build_plots(csv_path, args.output_dir)
+        # Validate and collect CSV paths for all provided dates
+        dates = args.date
+        for d in dates:
+            if len(d) != 8 or not d.isdigit():
+                raise SystemExit(
+                    f"--date '{d}' debe tener formato YYYYMMDD, por ejemplo 20260522."
+                )
+
+        csv_paths = [Path(f"data/experiments/{d}/trays.csv") for d in dates]
+        for p in csv_paths:
+            if not p.exists():
+                raise SystemExit(f"No existe el archivo esperado: {p}")
+
+        # Load and combine data from all dates
+        dfs = [load_absorption_data(p) for p in csv_paths]
+        combined_df = pd.concat(dfs, ignore_index=True, sort=False)
+
+        # Determine output dir (use first date's default if none provided)
+        if args.output_dir is None:
+            output_dir = default_output_dir(csv_paths[0])
+        else:
+            output_dir = args.output_dir
+
+        saved_paths = build_plots_from_df(combined_df, output_dir)
+    else:
+        saved_paths = build_plots(csv_path, args.output_dir)
     for output_path in saved_paths:
         print(f"[OK] Plot guardado en: {output_path}")
 
