@@ -19,28 +19,47 @@ def graficar_datos(
     archivo_datos=ARCHIVO_DATOS,
     objeto_a_graficar=OBJETO_A_GRAFICAR,
     tipo_medida=TIPO_MEDIDA,
+    archivos_multiples=None,
 ):
-    try:
-        df = pd.read_csv(archivo_datos)
-    except FileNotFoundError:
-        print(f"[ERROR] No encuentro el archivo: {archivo_datos}")
-        return None
+    if archivos_multiples is not None:
+        dfs = []
+        for fecha, ruta in archivos_multiples:
+            try:
+                df_temp = pd.read_csv(ruta)
+                df_temp['Fecha'] = str(fecha)
+                dfs.append(df_temp)
+            except FileNotFoundError:
+                print(f"[ERROR] No encuentro el archivo: {ruta}")
+        if not dfs:
+            return None
+        df = pd.concat(dfs, ignore_index=True)
+    else:
+        try:
+            df = pd.read_csv(archivo_datos)
+            df['Fecha'] = 'Única'
+        except FileNotFoundError:
+            print(f"[ERROR] No encuentro el archivo: {archivo_datos}")
+            return None
 
     columnas_necesarias = ['Grupo', 'Tipo_Objeto', 'Medida_Tipo', 'Medida_Valor', 'Replica']
     if not all(col in df.columns for col in columnas_necesarias):
         print("[ERROR] El CSV no contiene todas las columnas necesarias (Grupo, Tipo_Objeto, Medida_Tipo, Medida_Valor, Replica).")
         return None
 
-    cols_texto = ['Grupo', 'Tipo_Objeto', 'Medida_Tipo']
+    cols_texto = ['Grupo', 'Tipo_Objeto', 'Medida_Tipo', 'Fecha']
     for col in cols_texto:
-        df[col] = df[col].astype(str).str.strip()
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
 
     df['Medida_Valor'] = pd.to_numeric(
         df['Medida_Valor'].astype(str).str.replace(',', '.'),
         errors='coerce'
     )
 
-    df['ID_Muestra'] = df['Grupo'].astype(str).str.strip() + " " + df['Replica'].astype(str)
+    if len(df['Fecha'].unique()) > 1:
+        df['ID_Muestra'] = df['Fecha'] + " - " + df['Grupo'] + " " + df['Replica']
+    else:
+        df['ID_Muestra'] = df['Grupo'].astype(str).str.strip() + " " + df['Replica'].astype(str)
 
     df_subset = df[
         (df['Tipo_Objeto'] == objeto_a_graficar) &
@@ -198,7 +217,7 @@ def graficar_datos(
     print("\n[OK] Generadas 2 ventanas interactivas.")
     plt.show()
     return {
-        "archivo_datos": archivo_datos,
+        "archivos_datos": [a[1] for a in archivos_multiples] if archivos_multiples else [archivo_datos],
         "objeto": objeto_a_graficar,
         "tipo_medida": tipo_medida,
         "cantidad_datos": len(df_subset),

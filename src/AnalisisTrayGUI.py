@@ -713,9 +713,17 @@ class AnalisisTrayGUI(tk.Tk):
                     ),
                     f"Archivos: processed={resumen['processed_dir']}",
                     f"          plots={resumen['plots_dir']}",
-                    "",
                 ]
             )
+
+        combined_plot_path = result.get("combined_plot_path")
+        if combined_plot_path:
+            lineas.extend([
+                "",
+                f"Plot combinado: {combined_plot_path}",
+            ])
+
+        lineas.append("")
 
         if result["warnings"]:
             lineas.append("Advertencias:")
@@ -1002,6 +1010,59 @@ class AnalisisTrayGUI(tk.Tk):
             "rows_by_exp_id": rows_by_exp_id,
         }
 
+    def build_selected_combined_plot(
+        self, exp_ids: list[str], data: pd.DataFrame
+    ) -> Path:
+        if not AnalisisTrays.cargar_dependencias_plotting():
+            raise RuntimeError(
+                "No se pudieron cargar matplotlib/seaborn; no se puede generar el plot combinado."
+            )
+
+        plot_data = data.copy()
+        plot_data["exp_id"] = plot_data["exp_id"].astype(str)
+        plot_data = plot_data[plot_data["exp_id"].isin(exp_ids)]
+        plot_data = plot_data.dropna(subset=["exp_id", "raw_delta_weight"])
+        if plot_data.empty:
+            raise ValueError("No hay datos disponibles para generar el plot combinado.")
+
+        palette = AnalisisTrays.sns.color_palette(
+            "tab20", n_colors=max(len(exp_ids), 2)
+        )[: len(exp_ids)]
+        plot_dir = AnalisisTrays.GLOBAL_ANALYSIS_DIR / "selected_combined_plots"
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        output_path = plot_dir / f"analisis_combinado_{'_'.join(exp_ids)}.png"
+
+        AnalisisTrays.sns.set_theme(style="whitegrid", context="notebook")
+        fig, ax = AnalisisTrays.plt.subplots(figsize=(12, 7))
+        AnalisisTrays.sns.boxplot(
+            data=plot_data,
+            x="exp_id",
+            y="raw_delta_weight",
+            order=exp_ids,
+            palette=palette,
+            showfliers=False,
+            ax=ax,
+        )
+        AnalisisTrays.sns.stripplot(
+            data=plot_data,
+            x="exp_id",
+            y="raw_delta_weight",
+            order=exp_ids,
+            palette=palette,
+            size=5,
+            alpha=0.75,
+            jitter=0.15,
+            ax=ax,
+        )
+        ax.set_title("Datos combinados por experimento")
+        ax.set_xlabel("Fecha del experimento")
+        ax.set_ylabel("raw_delta_weight")
+        fig.tight_layout()
+        fig.savefig(output_path, dpi=200)
+        AnalisisTrays.plt.close(fig)
+
+        return output_path
+
     def create_selected_tray_combined(self) -> None:
         exp_ids = self.require_selected_experiments(
             "crear tray_combined.csv",
@@ -1037,6 +1098,16 @@ class AnalisisTrayGUI(tk.Tk):
             callback,
         )
         if result is not None:
+            if len(exp_ids) > 1:
+                plot_path = self.execute_with_log(
+                    "Generar plot combinado para seleccionados",
+                    lambda: self.build_selected_combined_plot(
+                        exp_ids, result["global_enriched"]
+                    ),
+                )
+                if plot_path is not None:
+                    result["combined_plot_path"] = str(plot_path)
+
             self.last_result = result
             self.render_summary(result)
 

@@ -588,29 +588,37 @@ class PipelineGUI(tk.Tk):
         )
 
     def run_graficas(self):
-        carpeta = self.require_single_selected_folder("graficar")
-        if carpeta is None:
+        carpetas = self.selected_folders()
+        if not carpetas:
+            messagebox.showwarning("Sin carpetas", "Seleccioná al menos una carpeta para graficar.")
             return
 
         graficas = self.get_module("Graficas")
-        rutas = self.get_output_paths(carpeta)
-        if not rutas["archivo_limpio"].exists() and not rutas["archivo_detallado"].exists():
-            messagebox.showwarning(
-                "Falta análisis",
-                f"No existe root_lengths.csv para {carpeta}.\nPrimero ejecutá Analizar para esta fecha.",
+        archivos_multiples = []
+        rutas_por_carpeta = []
+        
+        for carpeta in carpetas:
+            rutas = self.get_output_paths(carpeta)
+            if not rutas["archivo_limpio"].exists() and not rutas["archivo_detallado"].exists():
+                messagebox.showwarning(
+                    "Falta análisis",
+                    f"No existe root_lengths.csv para {carpeta}.\nPrimero ejecutá Analizar para esta fecha.",
+                )
+                return
+            rutas_por_carpeta.append(rutas)
+            archivos_multiples.append((carpeta, str(rutas["archivo_limpio"])))
+
+        def _ejecutar():
+            for rutas in rutas_por_carpeta:
+                self.ensure_legacy_results_file(rutas)
+            graficas.graficar_datos(
+                objeto_a_graficar=self.objeto_var.get(),
+                tipo_medida=self.medida_var.get(),
+                archivos_multiples=archivos_multiples,
             )
-            return
 
         self.execute_with_log(
-            "Graficas",
-            lambda: (
-                self.ensure_legacy_results_file(rutas),
-                graficas.graficar_datos(
-                    archivo_datos=str(rutas["archivo_limpio"]),
-                    objeto_a_graficar=self.objeto_var.get(),
-                    tipo_medida=self.medida_var.get(),
-                ),
-            ),
+            "Graficas", _ejecutar
         )
 
     def run_numeros(self):
