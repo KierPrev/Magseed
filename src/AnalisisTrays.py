@@ -424,6 +424,23 @@ def calcular_media_log_control(
     return float(log_ratios_control.mean()), cantidad_controles, advertencias
 
 
+def cargar_dataset_completo(exp_ids: list[str] = None) -> pd.DataFrame:
+    """
+    Función utilitaria para Notebooks. 
+    Carga uno o varios experimentos y retorna un solo DataFrame limpio y enriquecido.
+    """
+    metadata, _ = leer_metadata_global()
+    paths = descubrir_trays(exp_ids=exp_ids)
+    
+    all_data = []
+    for p in paths:
+        enriched, _ = cargar_experimento(p, metadata)
+        all_data.append(enriched)
+    
+    combined = pd.concat(all_data, ignore_index=True)
+    return combined
+
+
 def cargar_experimento(
     trays_path: Path, metadata: pd.DataFrame
 ) -> tuple[pd.DataFrame, list[str]]:
