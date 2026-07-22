@@ -65,7 +65,7 @@ CONTROL_TREATMENT_FLOOR = 9
 METRIC_YLABELS = {
     "delta_weight": "(post_weight - pre_weight) / mean(control_delta)",
     "pct_change": "(post_weight - pre_weight) / pre_weight",
-    "log_ratio_centered": "log(post_weight / pre_weight) - mean(log(control_post / control_pre))",
+    "log_ratio_centered": "log(post/pre) centrado por control",
 }
 METRIC_FOREST_TITLES = {
     "delta_weight": "Tratamiento vs Control (delta_weight normalizado)",
@@ -444,6 +444,7 @@ def cargar_dataset_completo(exp_ids: list[str] = None) -> pd.DataFrame:
 def cargar_experimento(
     trays_path: Path, metadata: pd.DataFrame
 ) -> tuple[pd.DataFrame, list[str]]:
+) -> tuple[pd.DataFrame, list[str]]:
     advertencias: list[str] = []
     datos = pd.read_csv(trays_path, dtype=str)
 
@@ -547,10 +548,31 @@ def cargar_experimento(
         else "not_centered_missing_control_log_ratio"
     )
     enriched["log_ratio_centered"] = np.where(
-        enriched["valid_log_ratio"] & np.isfinite(control_log_ratio_mean),
-        enriched["raw_log_ratio"] - control_log_ratio_mean,
+        enriched["valid_log_ratio"],
+        enriched["raw_log_ratio"],
         np.nan,
     )
+
+    # Si es un experimento de tratamiento y hay una media de control, se centra.
+    # Si es un control negativo, también se centra con su propia media.
+    # El ajuste por la media global de controles negativos se hará después.
+    if np.isfinite(control_log_ratio_mean):
+        enriched["log_ratio_centered"] -= control_log_ratio_mean
+
+    # El ajuste final se hace en la función `run_analysis` o `run_negative_control_analysis`
+    # que tiene el contexto de todos los experimentos.
+    # Aquí solo preparamos los datos base.
+
+    # Actualizamos la etiqueta del eje Y para ser más genérica, ya que el centrado
+    # final puede ser complejo.
+    if "log_ratio_centered" in METRIC_YLABELS:
+        METRIC_YLABELS["log_ratio_centered"] = (
+            "log(post/pre) centrado por control"
+            if es_experimento_control_negativo(enriched)
+            else "log(post/pre) ajustado por control interno y control negativo global"
+        )
+
+
     enriched["warning_messages"] = enriched.apply(construir_warning_row, axis=1)
 
     if not enriched["has_metadata"].all():
@@ -3493,6 +3515,41 @@ def imprimir_resumen(
             print(f"- {advertencia}")
 
 
+def _get_negative_control_global_mean(metadata: pd.DataFrame) -> float:
+    """Calcula la media de raw_log_ratio de todos los controles negativos."""
+    neg_control_exp_ids = metadata[
+        metadata["experiment_type"].isin(NEGATIVE_CONTROL_EXPERIMENT_TYPES)
+    ]["exp_id"].tolist()
+
+    if not neg_control_exp_ids:
+        return np.nan
+
+    try:
+        paths = descubrir_trays(exp_ids=neg_control_exp_ids)
+    except FileNotFoundError:
+        return np.nan
+
+    all_log_ratios = []
+    for path in paths:
+        df, _ = cargar_experimento(path, metadata)
+        valid_log_mask = (
+            df["has_complete_weights"]
+            & (df["raw_pre_weight"] > 0)
+            & (df["raw_post_weight"] > 0)
+        )
+        if valid_log_mask.any():
+            log_ratios = np.log(
+                df.loc[valid_log_mask, "raw_post_weight"]
+                / df.loc[valid_log_mask, "raw_pre_weight"]
+            )
+            all_log_ratios.append(log_ratios.dropna())
+
+    if not all_log_ratios:
+        return np.nan
+
+    return float(pd.concat(all_log_ratios, ignore_index=True).mean())
+
+
 def run_analysis(
     exp_id: str | None = None,
     verbose: bool = True,
@@ -3505,6 +3562,8 @@ def run_analysis(
         )
 
     metadata, advertencias = leer_metadata_global()
+    neg_control_global_mean = _get_negative_control_global_mean(metadata)
+
     trays_paths = descubrir_trays(exp_id=exp_id, exp_ids=exp_ids)
 
     experimentos: list[pd.DataFrame] = []
@@ -3514,6 +3573,10 @@ def run_analysis(
 
     for trays_path in trays_paths:
         enriched, warnings_exp = cargar_experimento(trays_path, metadata)
+        if not es_experimento_control_negativo(enriched) and np.isfinite(neg_control_global_mean) and np.isfinite(enriched["control_log_ratio_mean"].iloc[0]):
+            offset = enriched["control_log_ratio_mean"].iloc[0] - neg_control_global_mean
+            enriched["log_ratio_centered"] = enriched["raw_log_ratio"] - offset
+
         summary = resumen_experimento(enriched)
         models = modelos_experimento(enriched)
         comparisons = comparaciones_tratamiento_vs_control_experimento(enriched)
