@@ -5,16 +5,16 @@ from tkinter import messagebox, ttk
 import Asignador
 
 
-BG_COLOR = "#f3eee6"
-CARD_COLOR = "#fffaf3"
-PANEL_COLOR = "#f7f1e7"
-ACCENT_COLOR = "#2f6b5b"
-ACCENT_DARK = "#234d42"
-TEXT_COLOR = "#1f2a25"
-MUTED_COLOR = "#63706b"
-BORDER_COLOR = "#d7d0c6"
-TABLE_ALT_COLOR = "#f8f4ed"
-POSITION_HIGHLIGHT = "#d97956"
+BG_COLOR = "#eef1f3"
+CARD_COLOR = "#ffffff"
+PANEL_COLOR = "#f3f5f7"
+ACCENT_COLOR = "#1f6f78"
+ACCENT_DARK = "#154f56"
+TEXT_COLOR = "#1a2226"
+MUTED_COLOR = "#647079"
+BORDER_COLOR = "#dde2e6"
+TABLE_ALT_COLOR = "#f7f9fa"
+POSITION_HIGHLIGHT = "#d9622b"
 SORT_BY_POSITION = "position"
 SORT_BY_TREATMENT = "treatment_floor"
 SORT_LABELS = {
@@ -61,8 +61,10 @@ class AsignadorGUI(tk.Tk):
         self.current_treatment_var = tk.StringVar(value="-")
         self.current_pre_var = tk.StringVar(value="-")
         self.current_post_var = tk.StringVar(value="-")
+        self.current_no_germinadas_var = tk.StringVar(value="-")
         self.new_pre_var = tk.StringVar()
         self.new_post_var = tk.StringVar()
+        self.new_no_germinadas_var = tk.StringVar()
         self.treatment_id_var = tk.StringVar()
         self.treatment_value_var = tk.StringVar()
         self.treatment_type_var = tk.StringVar()
@@ -93,19 +95,19 @@ class AsignadorGUI(tk.Tk):
             "Title.TLabel",
             background=BG_COLOR,
             foreground=TEXT_COLOR,
-            font=("Helvetica", 22, "bold"),
+            font=("Helvetica Neue", 24, "bold"),
         )
         style.configure(
             "Subtitle.TLabel",
             background=BG_COLOR,
             foreground=MUTED_COLOR,
-            font=("Helvetica", 11),
+            font=("Helvetica Neue", 11),
         )
         style.configure(
             "Section.TLabel",
             background=CARD_COLOR,
             foreground=TEXT_COLOR,
-            font=("Helvetica", 14, "bold"),
+            font=("Helvetica Neue", 13, "bold"),
         )
         style.configure(
             "Body.TLabel",
@@ -133,7 +135,7 @@ class AsignadorGUI(tk.Tk):
         )
         style.configure(
             "TButton",
-            padding=(14, 10),
+            padding=(16, 12),
             font=("Helvetica", 10, "bold"),
             borderwidth=0,
         )
@@ -158,13 +160,13 @@ class AsignadorGUI(tk.Tk):
             background="white",
             fieldbackground="white",
             foreground=TEXT_COLOR,
-            rowheight=34,
+            rowheight=36,
             bordercolor=BORDER_COLOR,
             font=("Helvetica", 10),
         )
         style.map(
             "Treeview",
-            background=[("selected", "#58708a")],
+            background=[("selected", ACCENT_DARK)],
             foreground=[("selected", "white")],
         )
         style.configure(
@@ -232,7 +234,7 @@ class AsignadorGUI(tk.Tk):
         self.status_label.grid(row=3, column=0, sticky="ew")
 
     def _build_experiment_card(self, parent):
-        frame = ttk.Frame(parent, padding=20, style="Card.TFrame")
+        frame = ttk.Frame(parent, padding=24, style="Card.TFrame")
         frame.columnconfigure(1, weight=1)
 
         ttk.Label(frame, text="Experimento", style="Section.TLabel").grid(
@@ -309,7 +311,7 @@ class AsignadorGUI(tk.Tk):
         return frame
 
     def _build_metadata_card(self, parent):
-        frame = ttk.Frame(parent, padding=20, style="Card.TFrame")
+        frame = ttk.Frame(parent, padding=24, style="Card.TFrame")
         frame.columnconfigure(1, weight=1)
 
         ttk.Label(frame, text="Metadata", style="Section.TLabel").grid(
@@ -357,7 +359,7 @@ class AsignadorGUI(tk.Tk):
         return frame
 
     def _build_treatment_card(self, parent):
-        frame = ttk.Frame(parent, padding=20, style="Card.TFrame")
+        frame = ttk.Frame(parent, padding=24, style="Card.TFrame")
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(2, weight=1)
 
@@ -414,7 +416,7 @@ class AsignadorGUI(tk.Tk):
         return frame
 
     def _build_editor_card(self, parent):
-        frame = ttk.Frame(parent, padding=20, style="Card.TFrame")
+        frame = ttk.Frame(parent, padding=24, style="Card.TFrame")
         frame.columnconfigure(0, weight=1)
 
         ttk.Label(frame, text="Editar pesos", style="Section.TLabel").grid(
@@ -469,6 +471,9 @@ class AsignadorGUI(tk.Tk):
         self._build_info_field(info_grid, 0, 1, "Treatment floor", self.current_treatment_var)
         self._build_info_field(info_grid, 1, 0, "Peso antes actual", self.current_pre_var)
         self._build_info_field(info_grid, 1, 1, "Peso después actual", self.current_post_var)
+        self._build_info_field(
+            info_grid, 2, 0, "No germinadas actual", self.current_no_germinadas_var
+        )
 
         ttk.Label(form, text="Campos editables", style="EditHint.TLabel").grid(
             row=3, column=0, sticky="w"
@@ -514,8 +519,25 @@ class AsignadorGUI(tk.Tk):
             insertbackground=TEXT_COLOR,
         ).grid(row=8, column=0, sticky="ew", pady=(4, 16), ipady=7)
 
+        ttk.Label(form, text="No germinadas", style="Body.TLabel").grid(
+            row=9, column=0, sticky="w"
+        )
+        tk.Entry(
+            form,
+            textvariable=self.new_no_germinadas_var,
+            font=("Helvetica", 13),
+            bg="white",
+            fg=TEXT_COLOR,
+            relief="solid",
+            bd=1,
+            highlightthickness=2,
+            highlightbackground="#cfd8d3",
+            highlightcolor=ACCENT_COLOR,
+            insertbackground=TEXT_COLOR,
+        ).grid(row=10, column=0, sticky="ew", pady=(4, 16), ipady=7)
+
         buttons = ttk.Frame(form, style="Card.TFrame")
-        buttons.grid(row=9, column=0, sticky="ew")
+        buttons.grid(row=11, column=0, sticky="ew")
         buttons.columnconfigure(0, weight=1)
         buttons.columnconfigure(1, weight=1)
         buttons.columnconfigure(2, weight=1)
@@ -549,7 +571,7 @@ class AsignadorGUI(tk.Tk):
         )
 
     def _build_table_card(self, parent):
-        frame = ttk.Frame(parent, padding=20, style="Card.TFrame")
+        frame = ttk.Frame(parent, padding=24, style="Card.TFrame")
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(2, weight=1)
 
@@ -591,7 +613,7 @@ class AsignadorGUI(tk.Tk):
         table_container.columnconfigure(0, weight=1)
         table_container.rowconfigure(0, weight=1)
 
-        columns = ("position", "treatment_floor", "pre_weight", "post_weight")
+        columns = ("position", "treatment_floor", "pre_weight", "post_weight", "no_germinadas")
         self.tree = ttk.Treeview(
             table_container,
             columns=columns,
@@ -610,11 +632,13 @@ class AsignadorGUI(tk.Tk):
         )
         self.tree.heading("pre_weight", text="Peso antes")
         self.tree.heading("post_weight", text="Peso después")
+        self.tree.heading("no_germinadas", text="No germinadas")
 
         self.tree.column("position", width=90, anchor="center")
         self.tree.column("treatment_floor", width=120, anchor="center")
         self.tree.column("pre_weight", width=120, anchor="center")
         self.tree.column("post_weight", width=120, anchor="center")
+        self.tree.column("no_germinadas", width=120, anchor="center")
 
         scrollbar = ttk.Scrollbar(table_container, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -657,51 +681,46 @@ class AsignadorGUI(tk.Tk):
         floors = Asignador.generar_floors(Asignador.MAX_PHYSICAL_FLOORS)
         font_size = 13
         cell_width = 5
+        positions_per_row = 3
 
         header_font = ("Helvetica", max(font_size - 1, 9), "bold")
         cell_font = ("Helvetica", font_size, "bold")
 
-        tk.Label(
-            grid_frame,
-            text="",
-            bg=CARD_COLOR,
-            fg=TEXT_COLOR,
-            font=header_font,
-        ).grid(row=0, column=0, padx=4, pady=4)
+        for floor_index, floor in enumerate(floors):
+            floor_frame = ttk.Frame(grid_frame, style="Card.TFrame")
+            floor_frame.grid(
+                row=0,
+                column=floor_index,
+                padx=(0 if floor_index == 0 else 20, 0),
+                sticky="n",
+            )
 
-        for column in range(1, Asignador.POSITIONS_PER_FLOOR + 1):
             tk.Label(
-                grid_frame,
-                text=str(column),
-                bg=CARD_COLOR,
-                fg=MUTED_COLOR,
-                font=header_font,
-            ).grid(row=0, column=column, padx=4, pady=4)
-
-        for row, floor in enumerate(floors, start=1):
-            tk.Label(
-                grid_frame,
+                floor_frame,
                 text=floor,
-                width=3,
                 bg=CARD_COLOR,
-                fg=MUTED_COLOR,
+                fg=ACCENT_DARK,
                 font=header_font,
-            ).grid(row=row, column=0, padx=4, pady=4, sticky="e")
+            ).grid(row=0, column=0, columnspan=positions_per_row, padx=3, pady=(0, 6))
 
             for position in range(1, Asignador.POSITIONS_PER_FLOOR + 1):
+                row = (position - 1) // positions_per_row + 1
+                column = (position - 1) % positions_per_row
                 pos = f"{floor}{position}"
                 cell = tk.Label(
-                    grid_frame,
+                    floor_frame,
                     text=pos,
                     width=cell_width,
                     height=2,
                     bg=PANEL_COLOR,
                     fg=TEXT_COLOR,
                     font=cell_font,
-                    relief="solid",
-                    bd=1,
+                    relief="flat",
+                    bd=0,
+                    highlightthickness=1,
+                    highlightbackground=BORDER_COLOR,
                 )
-                cell.grid(row=row, column=position, padx=4, pady=4, sticky="nsew")
+                cell.grid(row=row, column=column, padx=3, pady=3, sticky="nsew")
                 self.tray_cells[pos] = cell
 
         treatment_frame = ttk.Frame(visual, style="Card.TFrame")
@@ -1021,6 +1040,7 @@ class AsignadorGUI(tk.Tk):
                     fila["treatment_floor"],
                     fila["pre_weight"] or "-",
                     fila["post_weight"] or "-",
+                    fila.get("no_germinadas") or "-",
                 ),
                 tags=("even" if index % 2 == 0 else "odd",),
             )
@@ -1046,6 +1066,7 @@ class AsignadorGUI(tk.Tk):
     def _clear_weight_entries(self):
         self.new_pre_var.set("")
         self.new_post_var.set("")
+        self.new_no_germinadas_var.set("")
 
     def _show_error(self, message):
         self._set_status(message, is_error=True)
@@ -1101,10 +1122,12 @@ class AsignadorGUI(tk.Tk):
         self.current_treatment_var.set(str(fila["treatment_floor"]))
         self.current_pre_var.set(fila["pre_weight"] or "-")
         self.current_post_var.set(fila["post_weight"] or "-")
+        self.current_no_germinadas_var.set(fila.get("no_germinadas") or "-")
 
         if previous_position != pos:
             self.new_pre_var.set(fila["pre_weight"])
             self.new_post_var.set(fila["post_weight"])
+            self.new_no_germinadas_var.set(fila.get("no_germinadas", ""))
 
         if update_tree_selection and self.tree.exists(pos):
             self.tree.selection_set(pos)
@@ -1118,6 +1141,7 @@ class AsignadorGUI(tk.Tk):
         self.current_treatment_var.set("-")
         self.current_pre_var.set("-")
         self.current_post_var.set("-")
+        self.current_no_germinadas_var.set("-")
 
     def _update_visual_position(self, posicion, treatment_floor=None):
         posicion_activa = None
@@ -1142,8 +1166,8 @@ class AsignadorGUI(tk.Tk):
             cell.configure(
                 bg=POSITION_HIGHLIGHT if is_active else PANEL_COLOR,
                 fg="white" if is_active else TEXT_COLOR,
-                bd=2 if is_active else 1,
-                highlightthickness=0,
+                highlightthickness=2 if is_active else 1,
+                highlightbackground=ACCENT_DARK if is_active else BORDER_COLOR,
             )
 
         if self.treatment_floor_cell is not None:
@@ -1188,6 +1212,7 @@ class AsignadorGUI(tk.Tk):
 
         before_var = tk.StringVar(value=fila["pre_weight"])
         after_var = tk.StringVar(value=fila["post_weight"])
+        no_germinadas_var = tk.StringVar(value=fila.get("no_germinadas", ""))
 
         container = ttk.Frame(dialog, padding=20, style="App.TFrame")
         container.pack(fill="both", expand=True)
@@ -1238,8 +1263,26 @@ class AsignadorGUI(tk.Tk):
         )
         after_entry.grid(row=5, column=0, sticky="ew", pady=(4, 16), ipady=7)
 
+        ttk.Label(container, text="No germinadas", style="Body.TLabel").grid(
+            row=6, column=0, sticky="w"
+        )
+        no_germinadas_entry = tk.Entry(
+            container,
+            textvariable=no_germinadas_var,
+            font=("Helvetica", 13),
+            bg="white",
+            fg=TEXT_COLOR,
+            relief="solid",
+            bd=1,
+            highlightthickness=2,
+            highlightbackground="#cfd8d3",
+            highlightcolor=ACCENT_COLOR,
+            insertbackground=TEXT_COLOR,
+        )
+        no_germinadas_entry.grid(row=7, column=0, sticky="ew", pady=(4, 16), ipady=7)
+
         buttons = ttk.Frame(container, style="App.TFrame")
-        buttons.grid(row=6, column=0, sticky="ew")
+        buttons.grid(row=8, column=0, sticky="ew")
         buttons.columnconfigure(0, weight=1)
         buttons.columnconfigure(1, weight=1)
 
@@ -1247,6 +1290,7 @@ class AsignadorGUI(tk.Tk):
             self.position_var.set(posicion)
             self.new_pre_var.set(before_var.get())
             self.new_post_var.set(after_var.get())
+            self.new_no_germinadas_var.set(no_germinadas_var.get())
             self._save_weights()
             dialog.destroy()
 
@@ -1271,12 +1315,14 @@ class AsignadorGUI(tk.Tk):
             posicion = self.position_var.get().strip() or self.suggestion_var.get().strip()
             nuevo_antes = self.new_pre_var.get()
             nuevo_despues = self.new_post_var.get()
+            nuevo_no_germinadas = self.new_no_germinadas_var.get()
 
             resultado = Asignador.actualizar_pesos_en_posicion(
                 exp_id,
                 posicion,
                 nuevo_antes=nuevo_antes,
                 nuevo_despues=nuevo_despues,
+                nuevo_no_germinadas=nuevo_no_germinadas,
             )
         except Exception as exc:
             self._show_error(str(exc))

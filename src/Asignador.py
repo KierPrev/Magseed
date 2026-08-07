@@ -36,6 +36,7 @@ FIELDNAMES = [
     "position",
     "pre_weight",
     "post_weight",
+    "no_germinadas",
 ]
 TREATMENT_FIELDNAMES = ["treatment_id", "treatment_value", "treatment_type"]
 METADATA_FIELDNAMES = ["exp_id", "experiment_type", "magnet_pole"]
@@ -608,6 +609,7 @@ def crear_trays_csv_para_experimento(
                     "position": position,
                     "pre_weight": "",
                     "post_weight": "",
+                    "no_germinadas": "",
                 }
             )
 
@@ -639,7 +641,12 @@ def leer_datos(exp_id: str):
     archivo = ruta_trays(exp_id)
     with open(archivo, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        return list(reader)
+        datos = list(reader)
+
+    for fila in datos:
+        fila.setdefault("no_germinadas", "")
+
+    return datos
 
 
 def guardar_datos(exp_id: str, datos):
@@ -669,7 +676,8 @@ def mostrar_bandejas(datos):
             f"Treatment floor: {fila['treatment_floor']} | "
             f"Pos: {pos:<2} | "
             f"Antes: {fila['pre_weight'] or '-':>6} | "
-            f"Después: {fila['post_weight'] or '-':>6}"
+            f"Después: {fila['post_weight'] or '-':>6} | "
+            f"No germinadas: {fila.get('no_germinadas') or '-':>6}"
         )
     print()
 
@@ -819,6 +827,7 @@ def actualizar_pesos_en_posicion(
     posicion: str,
     nuevo_antes: Optional[str] = None,
     nuevo_despues: Optional[str] = None,
+    nuevo_no_germinadas: Optional[str] = None,
 ) -> dict[str, object]:
     archivo = ruta_trays(validar_exp_id(exp_id))
 
@@ -843,6 +852,9 @@ def actualizar_pesos_en_posicion(
 
     if nuevo_despues is not None and nuevo_despues.strip() != "":
         fila["post_weight"] = nuevo_despues.strip()
+
+    if nuevo_no_germinadas is not None and nuevo_no_germinadas.strip() != "":
+        fila["no_germinadas"] = nuevo_no_germinadas.strip()
 
     guardar_datos(exp_id, datos)
 
@@ -899,11 +911,17 @@ def actualizar_pesos():
 
         print(f"Peso antes actual: {fila['pre_weight'] or '-'}")
         print(f"Peso después actual: {fila['post_weight'] or '-'}")
+        print(f"No germinadas actual: {fila.get('no_germinadas') or '-'}")
 
         nuevo_antes = input("Nuevo peso antes (Enter para dejar igual): ").strip()
         nuevo_despues = input("Nuevo peso después (Enter para dejar igual): ").strip()
+        nuevo_no_germinadas = input(
+            "Nueva cantidad de no germinadas (Enter para dejar igual): "
+        ).strip()
 
-        resultado = actualizar_pesos_en_posicion(exp_id, entrada, nuevo_antes, nuevo_despues)
+        resultado = actualizar_pesos_en_posicion(
+            exp_id, entrada, nuevo_antes, nuevo_despues, nuevo_no_germinadas
+        )
         datos = resultado["datos"]
         fila = resultado["fila"]
         ultima_posicion_editada = (fila["floor"], int(fila["position"]))
