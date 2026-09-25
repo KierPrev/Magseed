@@ -10,6 +10,9 @@
     "min_area_seed": 55,
     "root_bridge": 1,
     "min_area_root": 10,
-    "hsv_h_min": 0,
-    "hsv_h_max": 40
+    "hsv_h_min": 15,
+    "hsv_h_max": 40,
+    "root_solidity_max": 0.6,
+    "root_aspect_min": 0.12,
+    "root_aspect_max": 8.0
 }

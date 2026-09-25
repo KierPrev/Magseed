@@ -65,6 +65,7 @@ class PipelineGUI(tk.Tk):
         self.objeto_var = tk.StringVar(value=DEFAULT_OBJETO)
         self.medida_var = tk.StringVar(value=DEFAULT_MEDIDA)
         self.calibracion_var = tk.BooleanVar(value=False)
+        self.reprocesar_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Abriendo interfaz...")
         self.base_dir_var = tk.StringVar(value=f"Origen actual: {DEFAULT_EXPERIMENTS_DIR}")
         self.action_buttons = []
@@ -263,7 +264,7 @@ class PipelineGUI(tk.Tk):
         )
         ttk.Label(
             frame,
-            text="Analizar procesa las fotos y guarda root_lengths.csv en processed/ para cada experimento.",
+            text="Analizar mide solo las fotos nuevas y guarda root_lengths.csv en processed/ para cada experimento.",
             style="Muted.TLabel",
         ).grid(row=1, column=0, sticky="w", pady=(4, 16))
 
@@ -272,10 +273,17 @@ class PipelineGUI(tk.Tk):
             text="Abrir calibracion de Analizar",
             variable=self.calibracion_var,
             style="Card.TCheckbutton",
-        ).grid(row=2, column=0, sticky="w", pady=(0, 14))
+        ).grid(row=2, column=0, sticky="w", pady=(0, 4))
+
+        ttk.Checkbutton(
+            frame,
+            text="Reprocesar fotos ya medidas",
+            variable=self.reprocesar_var,
+            style="Card.TCheckbutton",
+        ).grid(row=3, column=0, sticky="w", pady=(0, 14))
 
         actions = ttk.Frame(frame, style="Card.TFrame")
-        actions.grid(row=3, column=0, sticky="ew")
+        actions.grid(row=4, column=0, sticky="ew")
 
         analizar_button = ttk.Button(actions, text="Analizar", command=self.run_analizar)
         analizar_button.grid(row=0, column=0, padx=(0, 10), pady=(0, 10), sticky="ew")
@@ -576,6 +584,7 @@ class PipelineGUI(tk.Tk):
                     carpeta_testigos=str(rutas["carpeta_testigos"]),
                     abrir_calibracion=self.calibracion_var.get(),
                     archivo_config=str(rutas["archivo_config"]),
+                    reprocesar=self.reprocesar_var.get(),
                 )
 
                 if resultado is None:
