@@ -8,3 +8,4 @@ scipy
 statsmodels
 zxing-cpp
 magpylib
+prompt_toolkit
