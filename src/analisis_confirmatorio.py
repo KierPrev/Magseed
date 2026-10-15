@@ -366,24 +366,24 @@ def analizar_germinacion(conf_df: pd.DataFrame, n_perm: int = 5000, seed: int = 
 
 def cargar_datos_radicula(fechas: list[str], dosis_csv: Path, control_floor: int = CONTROL_FLOOR,
                            min_raices: int = MIN_RAICES, factor_sospecha: int = FACTOR_SOSPECHA) -> pd.DataFrame | None:
-    # Se usan solo las fechas que efectivamente tienen raices medidas: el bloque
-    # absorbe la diferencia de fechas, asi que excluir una no invalida el resto.
-    con_datos = [f for f in fechas if _tiene_radicula(EXPERIMENTS_DIR / f / "processed" / "root_lengths.csv")]
-    faltantes = [f for f in fechas if f not in con_datos]
+    # Todo o nada: la radicula solo se analiza si las 3 fechas del grupo tienen
+    # fotos medidas. Con una sola fecha el "bloque" seria la fecha misma y la
+    # comparacion no es la que se aleatorizo.
+    faltantes = [f for f in fechas if not _tiene_radicula(EXPERIMENTS_DIR / f / "processed" / "root_lengths.csv")]
     if faltantes:
-        print(f"Advertencia: sin raices medidas en {faltantes}; el endpoint de radicula usa solo {con_datos}.")
-    if not con_datos:
+        print(f"Advertencia: sin raices medidas en {faltantes}; se omite el endpoint de radicula "
+              f"para este grupo (se necesitan las {len(fechas)} fechas).")
         return None
 
     raices = []
-    for fecha in con_datos:
+    for fecha in fechas:
         tmp = pd.read_csv(EXPERIMENTS_DIR / fecha / "processed" / "root_lengths.csv")
         tmp["fecha"] = fecha
         raices.append(tmp)
     raices = pd.concat(raices, ignore_index=True)
 
     trays = []
-    for fecha in con_datos:
+    for fecha in fechas:
         tmp = pd.read_csv(EXPERIMENTS_DIR / fecha / "trays.csv")
         tmp.columns = tmp.columns.str.strip()
         tmp["fecha"] = fecha
@@ -786,6 +786,96 @@ def comparativa_dosis_respuesta(resultados: list[ResultadoGrupo], out_dir: Path)
     return fig
 
 
+def run_control_positivo(fechas: list[str], out_dir: Path) -> Figure:
+    """Control positivo: las 3 fechas usan la misma dosis de agua (2/5/6 mL).
+    Sirve para mostrar que el metodo SI detecta un efecto real cuando existe,
+    que es lo que le da sentido al resultado nulo de los imanes."""
+    import matplotlib.pyplot as plt
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    dfs = []
+    for fecha in fechas:
+        trays = pd.read_csv(EXPERIMENTS_DIR / fecha / "trays.csv")
+        trays.columns = trays.columns.str.strip()
+        # El mL de cada nivel vive en treatment.csv (603 escribe "ml" y los
+        # otros "mL", de ahi el lower()).
+        trt = pd.read_csv(EXPERIMENTS_DIR / fecha / "treatment.csv")
+        trt["treatment_type"] = trt["treatment_type"].str.lower()
+        assert (trt["treatment_type"] == "ml").all(), f"{fecha}: treatment.csv no esta en mL"
+        mapa = dict(zip(trt["treatment_id"], trt["treatment_value"]))
+        trays["water_ml"] = trays["treatment_floor"].map(mapa)
+        trays["fecha"] = fecha
+        dfs.append(trays)
+
+    df = pd.concat(dfs, ignore_index=True)
+    df = df.dropna(subset=["pre_weight", "post_weight", "water_ml"]).copy()
+    df["pct_change"] = (df["post_weight"] - df["pre_weight"]) / df["pre_weight"]
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        print("=" * 72)
+        print(f"CONTROL POSITIVO: imbibicion vs agua aplicada (n = {len(df)} bandejas)")
+        print("=" * 72)
+        print(f"Fechas: {', '.join(fechas)}")
+        print("\nBandejas por fecha y nivel de agua:")
+        print(pd.crosstab(df["fecha"], df["water_ml"]))
+        print("\nResumen por nivel de agua:")
+        print(df.groupby("water_ml")["pct_change"]
+              .agg(["count", "mean", "std", "min", "max"]).round(4).to_string())
+
+        # La fecha entra como bloque: distinta tanda de semillas por experimento.
+        modelo = smf.ols("pct_change ~ water_ml + C(fecha)", data=df).fit()
+        lo, hi = modelo.conf_int().loc["water_ml"]
+        print(f"\nModelo: pct_change ~ water_ml + C(fecha)   (fecha = bloque)")
+        print(f"Pendiente: {modelo.params['water_ml']:+.5f} por mL "
+              f"IC95 [{lo:+.5f}, {hi:+.5f}] p = {modelo.pvalues['water_ml']:.2e}")
+        print(f"R2 ajustado = {modelo.rsquared_adj:.3f}")
+
+        print("\nTest global del nivel de agua (como factor):")
+        m_factor = smf.ols("pct_change ~ C(water_ml) + C(fecha)", data=df).fit()
+        print(anova_lm(m_factor, typ=2).round(5))
+
+        niveles = sorted(df["water_ml"].unique())
+        print(f"\nContrastes entre niveles (Welch, Holm):")
+        pares, ps = [], []
+        for i, a in enumerate(niveles):
+            for b in niveles[i + 1:]:
+                va = df.loc[df.water_ml == a, "pct_change"]
+                vb = df.loc[df.water_ml == b, "pct_change"]
+                pares.append((a, b, vb.mean() - va.mean()))
+                ps.append(stats.ttest_ind(va, vb, equal_var=False).pvalue)
+        p_holm = multipletests(ps, method="holm")[1]
+        for (a, b, dif), p, ph in zip(pares, ps, p_holm):
+            print(f"  {a} mL vs {b} mL: {dif:+.4f}  p = {p:.4g}  Holm = {ph:.4g}")
+
+    (out_dir / "reporte_control_positivo.txt").write_text(buf.getvalue(), encoding="utf-8")
+
+    resumen = df.groupby("water_ml")["pct_change"].agg(["count", "mean", "std"]).round(5)
+    resumen.to_csv(out_dir / "control_positivo_por_nivel.csv")
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    sns.boxplot(data=df, x="water_ml", y="pct_change", order=niveles, width=0.55, ax=ax,
+                showfliers=False, medianprops={"color": "black", "linewidth": 2},
+                boxprops={"alpha": 0.5, "edgecolor": "k"},
+                whiskerprops={"color": "k", "linewidth": 1.3},
+                capprops={"color": "k", "linewidth": 1.3})
+    sns.stripplot(data=df, x="water_ml", y="pct_change", order=niveles, hue="fecha",
+                  dodge=False, size=6, jitter=0.18, alpha=0.85, ax=ax, zorder=5)
+    medias = df.groupby("water_ml")["pct_change"].mean().reindex(niveles)
+    ax.scatter(range(len(niveles)), medias.values, marker="D", s=85, facecolors="white",
+               edgecolors="black", linewidths=1.6, zorder=10, label="media del nivel")
+    ax.set_xlabel("Agua aplicada (mL)")
+    ax.set_ylabel("Imbibicion a 72 h ((post - pre) / pre)")
+    ax.set_title(f"Control positivo: imbibicion vs agua | n = {len(df)} bandejas\n"
+                 f"pendiente {modelo.params['water_ml']:+.4f}/mL, p = {modelo.pvalues['water_ml']:.1e}")
+    ax.grid(True, axis="y", linestyle="--", alpha=0.4)
+    ax.legend(title="Fecha", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(out_dir / "fig_control_positivo.png", dpi=200)
+    return fig
+
+
 def agrupar_por_tipo(fechas: list[str], inventario: list[EstadoExperimento]) -> dict[tuple[str, str], list[str]]:
     por_exp_id = {e.exp_id: e for e in inventario}
     grupos: dict[tuple[str, str], list[str]] = {}
@@ -809,6 +899,12 @@ def main() -> None:
     grupos = agrupar_por_tipo(fechas_elegidas, inventario)
     resultados = []
     for (tipo, polo), fechas in grupos.items():
+        if tipo == "CTRL_POSITIVO":
+            out_dir = ANALYSIS_DIR / "control_positivo_combinado"
+            print(f"\n>>> Control positivo ({', '.join(sorted(fechas))}) -> {out_dir}")
+            run_control_positivo(sorted(fechas), out_dir)
+            continue
+
         clave_dosis = DOSIS_CSV_MAP.get((tipo, polo))
         if clave_dosis is None:
             print(f"[OMITIDO] {tipo}/{polo} ({', '.join(fechas)}): no hay tabla de dosis mapeada en DOSIS_CSV_MAP.")
