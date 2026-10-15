@@ -444,7 +444,6 @@ def cargar_dataset_completo(exp_ids: list[str] = None) -> pd.DataFrame:
 def cargar_experimento(
     trays_path: Path, metadata: pd.DataFrame
 ) -> tuple[pd.DataFrame, list[str]]:
-) -> tuple[pd.DataFrame, list[str]]:
     advertencias: list[str] = []
     datos = pd.read_csv(trays_path, dtype=str)
 
