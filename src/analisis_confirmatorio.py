@@ -628,36 +628,44 @@ def fig_boxplot_radicula(resultado_rad: ResultadoRadicula, titulo: str,
         return None
     import matplotlib.pyplot as plt
 
-    rl_df = resultado_rad.rl_df
+    # Se grafica el desvio respecto del bloque, no el mm absoluto: cada fecha
+    # midio en su propia escala (el pipeline de fotos no es comparable entre
+    # fechas), asi que juntar los mm crudos haria que el alto de cada caja sea
+    # la distancia entre fechas y no el efecto del tratamiento. Centrar por
+    # bloque es exactamente lo que hace el termino C(bloque) del modelo, asi
+    # que la figura muestra lo mismo que testean los p-valores anotados.
+    rl_df = resultado_rad.rl_df.copy()
+    rl_df["centrado"] = rl_df["mediana_mm"] - rl_df.groupby("bloque")["mediana_mm"].transform("mean")
     vs_control = resultado_rad.vs_control
 
     rl_orden = [f for f in range(1, control_floor + 1) if f in set(rl_df["treatment_floor"])]
-    rl_ctrl = rl_df.loc[rl_df["treatment_floor"] == control_floor, "mediana_mm"]
+    rl_ctrl = rl_df.loc[rl_df["treatment_floor"] == control_floor, "centrado"]
     rl_ctrl_ee = rl_ctrl.std() / np.sqrt(len(rl_ctrl))
     rl_colores = ["tab:red" if f == control_floor else "tab:green" for f in rl_orden]
 
     fig_rl, ax_rl = plt.subplots(figsize=(13, 6.5))
+    ax_rl.axhline(0, color="gray", linestyle="-", linewidth=0.9, zorder=0)
     ax_rl.axhspan(rl_ctrl.mean() - 1.96 * rl_ctrl_ee, rl_ctrl.mean() + 1.96 * rl_ctrl_ee,
                   color="tab:red", alpha=0.10, zorder=0,
-                  label=f"control IC95 [{rl_ctrl.mean() - 1.96 * rl_ctrl_ee:.1f}, {rl_ctrl.mean() + 1.96 * rl_ctrl_ee:.1f}] mm")
+                  label=f"control IC95 [{rl_ctrl.mean() - 1.96 * rl_ctrl_ee:+.1f}, {rl_ctrl.mean() + 1.96 * rl_ctrl_ee:+.1f}] mm")
     ax_rl.axhline(rl_ctrl.mean(), color="tab:red", linestyle="--", linewidth=1.4, zorder=1,
-                  label=f"media control = {rl_ctrl.mean():.1f} mm")
-    sns.boxplot(data=rl_df, x="treatment_floor", y="mediana_mm", order=rl_orden,
+                  label=f"media control = {rl_ctrl.mean():+.1f} mm vs su bloque")
+    sns.boxplot(data=rl_df, x="treatment_floor", y="centrado", order=rl_orden,
                 palette=rl_colores, width=0.62, showfliers=False, ax=ax_rl,
                 medianprops={"color": "black", "linewidth": 2},
                 boxprops={"alpha": 0.45, "edgecolor": "k"},
                 whiskerprops={"color": "k", "linewidth": 1.3},
                 capprops={"color": "k", "linewidth": 1.3})
-    sns.stripplot(data=rl_df, x="treatment_floor", y="mediana_mm", order=rl_orden, hue="fecha",
+    sns.stripplot(data=rl_df, x="treatment_floor", y="centrado", order=rl_orden, hue="fecha",
                   palette="dark", size=5, jitter=0.18, alpha=0.8, ax=ax_rl, zorder=5)
-    rl_medias = rl_df.groupby("treatment_floor")["mediana_mm"].mean().reindex(rl_orden)
+    rl_medias = rl_df.groupby("treatment_floor")["centrado"].mean().reindex(rl_orden)
     ax_rl.scatter(range(len(rl_orden)), rl_medias.values, marker="D", s=85,
                   facecolors="white", edgecolors="black", linewidths=1.6, zorder=10,
                   label="media del piso")
 
     p_map = vs_control.set_index("floor")[["p", "p_holm"]]
-    rl_top = rl_df["mediana_mm"].max()
-    rl_rango = rl_top - rl_df["mediana_mm"].min()
+    rl_top = rl_df["centrado"].max()
+    rl_rango = rl_top - rl_df["centrado"].min()
     for i, f in enumerate(rl_orden):
         if f == control_floor:
             ax_rl.text(i, rl_top + 0.10 * rl_rango, "CONTROL", ha="center", fontsize=9, color="tab:red", fontweight="bold")
@@ -669,10 +677,14 @@ def fig_boxplot_radicula(resultado_rad: ResultadoRadicula, titulo: str,
     ax_rl.set_xticklabels([f"{f}\n{'sin campo' if f == control_floor else format(rl_df.loc[rl_df.treatment_floor == f, 'B_compart_mT'].iloc[0], '.0f') + ' mT'}"
                            for f in rl_orden])
     ax_rl.set_xlabel("treatment_floor (campo del compartimento)")
-    ax_rl.set_ylabel("Largo de radicula, mediana por bandeja (mm)")
+    ax_rl.set_ylabel("Largo de radicula: desvio respecto de su bloque (mm)")
     ax_rl.set_ylim(top=rl_top + 0.22 * rl_rango)
     fechas_usadas = ", ".join(sorted(rl_df["fecha"].unique()))
-    ax_rl.set_title(f"Largo de radicula por piso vs control | {titulo} ({fechas_usadas}) | p ajustado por bloque")
+    ax_rl.set_title(
+        f"Largo de radicula por piso vs control | {titulo} ({fechas_usadas})\n"
+        f"Centrado por bloque (fecha x piso fisico); en escala absoluta la media del control "
+        f"es {resultado_rad.media_control:.1f} mm | p ajustado por bloque"
+    )
     ax_rl.grid(True, axis="y", linestyle="--", alpha=0.4)
     ax_rl.legend(loc="upper left", bbox_to_anchor=(1.01, 1), fontsize=8)
     fig_rl.tight_layout()
