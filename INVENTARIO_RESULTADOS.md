@@ -98,7 +98,30 @@ Todos los modelos incluyen el término `C(bloque)`.
 
 ## 3. Dónde está cada figura
 
-Todas las rutas son relativas a la raíz del repositorio.
+Todas las rutas son relativas a la raíz de **este** repositorio
+(`tesis-magnetobiologia-software`).
+
+### Cómo las ve el documento LaTeX
+
+El repositorio de la tesis (`../tesis-magnetobiologia-latex`) tiene un symlink:
+
+```
+datos/software_data -> /Users/kier/MEGA/tesina/tesis-magnetobiologia-software/data
+```
+
+Por eso, desde el `.tex`, una figura de acá se referencia así:
+
+| Ruta en este repo | Ruta en el `.tex` |
+|---|---|
+| `data/analysis/confirmatorio_neodimio_n/fig_radicula_boxplot.pdf` | `datos/software_data/analysis/confirmatorio_neodimio_n/fig_radicula_boxplot.pdf` |
+
+**No hay que copiar nada**: al regenerar una figura, el documento la toma en la
+siguiente compilación.
+
+**Usar siempre la versión `.pdf`, no la `.png`.** Cada figura se exporta en los
+dos formatos. El PDF es vectorial (mejor calidad en LaTeX) y es el único de los
+dos que queda versionado en git, porque `.gitignore` bloquea `*.png`. El
+documento ya usa `.pdf` para las figuras de caracterización de campo.
 
 ### 3.1 Resultados principales — experimentos de imán
 
@@ -237,6 +260,14 @@ este script.
 
 ### Nota sobre git
 
-`*.png` está en `.gitignore`, así que **las figuras no están versionadas**. Los
-`.csv` y `.txt` sí. Si una figura no aparece en el repositorio clonado, hay que
-regenerarla con el comando de arriba.
+`*.png` está en `.gitignore`, así que **los PNG no se versionan**. Los `.pdf`,
+`.csv` y `.txt` sí. Por eso el documento LaTeX debe referenciar siempre el
+`.pdf` de cada figura: es el que sobrevive a un clon limpio del repositorio.
+
+Atención si se toca la caracterización de campo: las figuras
+`extra/plots/*_bz_fit*.png` y las del control negativo
+(`analysis/negative_control_combined/*.png`) **solo existen como PNG y no están
+versionadas**, pero el documento ya las usa. Si alguna se pierde hay que
+regenerarla con los scripts correspondientes (`plot_field_heatmaps.py`,
+`simulate_magnet_field.py` y el pipeline del control negativo), no con
+`analisis_confirmatorio.py`.

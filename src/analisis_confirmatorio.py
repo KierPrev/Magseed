@@ -696,6 +696,13 @@ def fig_boxplot_radicula(resultado_rad: ResultadoRadicula, titulo: str,
 # =============================================================================
 
 
+def guardar_figura(fig: Figure, destino: Path) -> None:
+    """PNG para mirar y PDF para LaTeX. El PDF es vectorial y, de paso, es el
+    unico de los dos que queda versionado: .gitignore bloquea *.png."""
+    fig.savefig(destino.with_suffix(".png"), dpi=200)
+    fig.savefig(destino.with_suffix(".pdf"))
+
+
 def run_grupo(nombre: str, fechas: list[str], titulo: str, dosis_csv: Path, out_dir: Path) -> ResultadoGrupo:
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -711,18 +718,18 @@ def run_grupo(nombre: str, fechas: list[str], titulo: str, dosis_csv: Path, out_
     fig_rad_box = fig_boxplot_radicula(resultado_rad, titulo)
 
     resultado_peso.vs_control.to_csv(out_dir / "peso_vs_control.csv", index=False)
-    fig_forest.savefig(out_dir / "fig_forest_peso_germinacion.png", dpi=200)
+    guardar_figura(fig_forest, out_dir / "fig_forest_peso_germinacion")
 
     if resultado_germ.disponible:
         resultado_germ.gm_df.groupby("treatment_floor").agg(
             B_mT=("B_compart_mT", "first"), media=("germinadas", "mean"),
             sd=("germinadas", "std"), n=("germinadas", "count"),
         ).round(3).to_csv(out_dir / "germinacion_por_piso.csv")
-        fig_germ_box.savefig(out_dir / "fig_germinacion_boxplot.png", dpi=200)
+        guardar_figura(fig_germ_box, out_dir / "fig_germinacion_boxplot")
 
     if resultado_rad.disponible:
         resultado_rad.vs_control.to_csv(out_dir / "radicula_vs_control.csv", index=False)
-        fig_rad_box.savefig(out_dir / "fig_radicula_boxplot.png", dpi=200)
+        guardar_figura(fig_rad_box, out_dir / "fig_radicula_boxplot")
 
     reporte = "\n\n".join(filter(None, [
         f"GRUPO: {titulo} ({nombre})\nFechas: {', '.join(fechas)}\n",
@@ -783,7 +790,7 @@ def comparativa_dosis_respuesta(resultados: list[ResultadoGrupo], out_dir: Path)
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.legend(title="Iman")
     fig.tight_layout()
-    fig.savefig(out_dir / "fig_dosis_respuesta_combinada.png", dpi=200)
+    guardar_figura(fig, out_dir / "fig_dosis_respuesta_combinada")
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -884,7 +891,7 @@ def run_control_positivo(fechas: list[str], out_dir: Path) -> Figure:
     ax.grid(True, axis="y", linestyle="--", alpha=0.4)
     ax.legend(title="Fecha", fontsize=9)
     fig.tight_layout()
-    fig.savefig(out_dir / "fig_control_positivo.png", dpi=200)
+    guardar_figura(fig, out_dir / "fig_control_positivo")
     return fig
 
 
