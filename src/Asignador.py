@@ -39,7 +39,7 @@ FIELDNAMES = [
     "no_germinadas",
 ]
 TREATMENT_FIELDNAMES = ["treatment_id", "treatment_value", "treatment_type"]
-METADATA_FIELDNAMES = ["exp_id", "experiment_type", "magnet_pole"]
+METADATA_FIELDNAMES = ["exp_id", "experiment_type", "magnet_pole", "water_ml"]
 LEGACY_METADATA_FIELDNAMES = ["exp_id", "magnet", "magnet_pole"]
 DEFAULT_EXPERIMENT_TYPES = [
     "CTRL_NEGATIVO",
@@ -272,6 +272,25 @@ def normalizar_magnet_pole(magnet_pole: str) -> str:
     return magnet_pole_normalizado
 
 
+def normalizar_water_ml(water_ml: str) -> str:
+    """Agua aplicada por bandeja, en mL. Vacio es valido: los controles
+    positivos la registran por bandeja en su propio trays.csv, y hay
+    experimentos viejos donde el volumen no quedo anotado."""
+    valor = str(water_ml).strip()
+    if valor == "":
+        return ""
+
+    try:
+        numero = float(valor)
+    except ValueError:
+        raise ValueError(f"water_ml debe ser un numero en mL o vacio, no '{water_ml}'.")
+
+    if numero <= 0:
+        raise ValueError(f"water_ml debe ser positivo, no '{water_ml}'.")
+
+    return f"{numero:g}"
+
+
 def pedir_metadata_experimento() -> dict[str, str]:
     while True:
         experiment_type = input(
@@ -293,16 +312,31 @@ def pedir_metadata_experimento() -> dict[str, str]:
             continue
         break
 
+    while True:
+        water_ml = input(
+            "Agua aplicada por bandeja en mL (enter si no aplica o no se sabe): "
+        ).strip()
+        try:
+            water_ml = normalizar_water_ml(water_ml)
+        except ValueError as exc:
+            print(f"{exc}\n")
+            continue
+        break
+
     return {
         "experiment_type": experiment_type,
         "magnet_pole": magnet_pole,
+        "water_ml": water_ml,
     }
 
 
-def normalizar_metadata(experiment_type: str, magnet_pole: str) -> dict[str, str]:
+def normalizar_metadata(
+    experiment_type: str, magnet_pole: str, water_ml: str = ""
+) -> dict[str, str]:
     return {
         "experiment_type": normalizar_experiment_type(experiment_type),
         "magnet_pole": normalizar_magnet_pole(magnet_pole),
+        "water_ml": normalizar_water_ml(water_ml),
     }
 
 
@@ -312,6 +346,7 @@ def normalizar_fila_metadata(fila: dict[str, str]) -> dict[str, str]:
         "exp_id": fila.get("exp_id", "").strip(),
         "experiment_type": normalizar_experiment_type(experiment_type),
         "magnet_pole": normalizar_magnet_pole(fila.get("magnet_pole", "")),
+        "water_ml": normalizar_water_ml(fila.get("water_ml", "")),
     }
 
 
@@ -388,12 +423,12 @@ def asegurar_salto_final_csv(archivo: Path) -> None:
 
 
 def crear_metadata_csv_con_valores(
-    exp_id: str, experiment_type: str, magnet_pole: str
+    exp_id: str, experiment_type: str, magnet_pole: str, water_ml: str = ""
 ) -> Path:
     exp_id = validar_exp_id(exp_id)
     archivo = ruta_metadata()
 
-    metadata = normalizar_metadata(experiment_type, magnet_pole)
+    metadata = normalizar_metadata(experiment_type, magnet_pole, water_ml)
     crear_estructura_experimento(exp_id)
     migrar_metadata_csv_si_hace_falta()
 
@@ -419,6 +454,7 @@ def crear_metadata_csv_con_valores(
                 "exp_id": exp_id,
                 "experiment_type": metadata["experiment_type"],
                 "magnet_pole": metadata["magnet_pole"],
+                "water_ml": metadata["water_ml"],
             }
         )
 
@@ -429,14 +465,19 @@ def crear_metadata_csv(
     exp_id: str,
     experiment_type: Optional[str] = None,
     magnet_pole: Optional[str] = None,
+    water_ml: Optional[str] = None,
 ):
     if experiment_type is None or magnet_pole is None:
         metadata = pedir_metadata_experimento()
         experiment_type = metadata["experiment_type"]
         magnet_pole = metadata["magnet_pole"]
+        if water_ml is None:
+            water_ml = metadata["water_ml"]
 
     try:
-        archivo = crear_metadata_csv_con_valores(exp_id, experiment_type, magnet_pole)
+        archivo = crear_metadata_csv_con_valores(
+            exp_id, experiment_type, magnet_pole, water_ml or ""
+        )
     except (ValueError, FileExistsError) as exc:
         print(f"{exc}\n")
         return None

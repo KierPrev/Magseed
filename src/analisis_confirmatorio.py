@@ -64,6 +64,7 @@ class EstadoExperimento:
     exp_id: str
     experiment_type: str
     magnet_pole: str
+    water_ml: str
     pesos_ok: bool
     fotos_raw: bool
     radicula_procesada: bool
@@ -100,10 +101,19 @@ def construir_inventario() -> list[EstadoExperimento]:
         radicula_procesada = _tiene_radicula(exp_dir / "processed" / "root_lengths.csv")
         dosis_disponible = (row["experiment_type"], row["magnet_pole"]) in DOSIS_CSV_MAP
 
+        # pandas lee la columna como float, asi que "5" vuelve como "5.0" y
+        # ensuciaria el nombre del grupo. Se normaliza a entero cuando lo es.
+        agua = row.get("water_ml", "")
+        if pd.isna(agua) or str(agua).strip() == "":
+            agua = ""
+        else:
+            agua = f"{float(agua):g}"
+
         inventario.append(EstadoExperimento(
             exp_id=exp_id,
             experiment_type=row["experiment_type"],
             magnet_pole=row["magnet_pole"],
+            water_ml=agua,
             pesos_ok=pesos_ok,
             fotos_raw=fotos_raw,
             radicula_procesada=radicula_procesada,
@@ -118,7 +128,8 @@ def _marca(ok: bool) -> str:
 
 
 def etiqueta(e: EstadoExperimento) -> str:
-    tipo = f"{e.experiment_type}/{e.magnet_pole}"
+    agua = f"{e.water_ml}mL" if e.water_ml else "?mL"
+    tipo = f"{e.experiment_type}/{e.magnet_pole} {agua}"
     extra = "" if e.dosis_disponible else "  [sin tabla de dosis, no se puede graficar]"
     return (
         f"{e.exp_id}  {tipo:22s}  "
@@ -895,29 +906,59 @@ def run_control_positivo(fechas: list[str], out_dir: Path) -> Figure:
     return fig
 
 
-def agrupar_por_tipo(fechas: list[str], inventario: list[EstadoExperimento]) -> dict[tuple[str, str], list[str]]:
+def agrupar_por_tipo(
+    fechas: list[str], inventario: list[EstadoExperimento]
+) -> dict[tuple[str, str, str], list[str]]:
+    """El agua entra en la clave de grupo: las dos campanas de neodimio N se
+    corrieron con volumenes distintos (5 mL saturacion, 3 mL estres hidrico), y
+    agruparlas juntas mezclaria dos condiciones experimentales en un solo
+    analisis. Son grupos separados, con directorios de salida separados."""
     por_exp_id = {e.exp_id: e for e in inventario}
-    grupos: dict[tuple[str, str], list[str]] = {}
+    grupos: dict[tuple[str, str, str], list[str]] = {}
     for fecha in fechas:
         e = por_exp_id[fecha]
-        key = (e.experiment_type, e.magnet_pole)
+        key = (e.experiment_type, e.magnet_pole, e.water_ml)
         grupos.setdefault(key, []).append(fecha)
     return grupos
 
 
 def main() -> None:
+    import argparse
     import matplotlib
     matplotlib.use("Agg")
 
+    parser = argparse.ArgumentParser(
+        description="Analisis confirmatorio por grupo (tipo de iman, polo, agua)."
+    )
+    parser.add_argument(
+        "--fechas",
+        nargs="+",
+        metavar="EXP_ID",
+        help="Fechas a analizar (ej. --fechas 20260626 20260721 20260727). "
+             "Sin este flag se abre la seleccion interactiva.",
+    )
+    args = parser.parse_args()
+
     inventario = construir_inventario()
-    fechas_elegidas = seleccionar_fechas(inventario)
+
+    if args.fechas:
+        conocidas = {e.exp_id for e in inventario}
+        desconocidas = [f for f in args.fechas if f not in conocidas]
+        if desconocidas:
+            parser.error(
+                "No estan en experiments_metadata.csv: " + ", ".join(desconocidas)
+            )
+        fechas_elegidas = list(args.fechas)
+    else:
+        fechas_elegidas = seleccionar_fechas(inventario)
+
     if not fechas_elegidas:
         print("No se eligio ninguna fecha. Nada que hacer.")
         return
 
     grupos = agrupar_por_tipo(fechas_elegidas, inventario)
     resultados = []
-    for (tipo, polo), fechas in grupos.items():
+    for (tipo, polo, agua), fechas in grupos.items():
         if tipo == "CTRL_POSITIVO":
             out_dir = ANALYSIS_DIR / "control_positivo_combinado"
             print(f"\n>>> Control positivo ({', '.join(sorted(fechas))}) -> {out_dir}")
@@ -929,8 +970,15 @@ def main() -> None:
             print(f"[OMITIDO] {tipo}/{polo} ({', '.join(fechas)}): no hay tabla de dosis mapeada en DOSIS_CSV_MAP.")
             continue
 
-        nombre = f"{tipo.replace('IMAN_', '').lower()}_{polo.lower()}"
-        titulo = f"{tipo.replace('IMAN_', '').title()} {polo}"
+        if not agua:
+            print(f"[OMITIDO] {tipo}/{polo} ({', '.join(fechas)}): sin water_ml en "
+                  f"experiments_metadata.csv. El agua define el grupo, asi que "
+                  f"hay que completarla antes de analizar.")
+            continue
+
+        sufijo_agua = f"_{agua}ml"
+        nombre = f"{tipo.replace('IMAN_', '').lower()}_{polo.lower()}{sufijo_agua}"
+        titulo = f"{tipo.replace('IMAN_', '').title()} {polo} ({agua} mL)"
         out_dir = ANALYSIS_DIR / f"confirmatorio_{nombre}"
         print(f"\n>>> Corriendo grupo {titulo} ({', '.join(sorted(fechas))}) -> {out_dir}")
         resultado = run_grupo(nombre, sorted(fechas), titulo, EXTRA_DIR / clave_dosis, out_dir)

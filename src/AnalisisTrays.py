@@ -40,8 +40,10 @@ TRAY_COLUMNS = [
     "post_weight",
 ]
 REQUIRED_TRAY_COLUMNS = set(TRAY_COLUMNS)
-METADATA_COLUMNS = ["exp_id", "experiment_type", "magnet_pole"]
-REQUIRED_METADATA_COLUMNS = set(METADATA_COLUMNS)
+METADATA_COLUMNS = ["exp_id", "experiment_type", "magnet_pole", "water_ml"]
+# water_ml queda fuera de las obligatorias: no se exige para no romper la lectura
+# de metadata viejo, pero se arrastra si esta presente.
+REQUIRED_METADATA_COLUMNS = {"exp_id", "experiment_type", "magnet_pole"}
 SUMMARY_METRICS = (
     "pre_weight",
     "post_weight",
