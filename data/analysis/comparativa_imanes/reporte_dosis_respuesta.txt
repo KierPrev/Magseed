@@ -9,7 +9,7 @@ Dep. Variable:             pct_change   R-squared:                       0.588
 Model:                            OLS   Adj. R-squared:                  0.583
 Method:                 Least Squares   F-statistic:                     113.6
 Date:                Thu, 15 Oct 2026   Prob (F-statistic):           2.30e-31
-Time:                        14:23:20   Log-Likelihood:                 264.57
+Time:                        14:29:10   Log-Likelihood:                 264.57
 No. Observations:                 162   AIC:                            -523.1
 Df Residuals:                     159   BIC:                            -513.9
 Df Model:                           2                                         
@@ -37,7 +37,7 @@ Dep. Variable:             pct_change   R-squared:                       0.590
 Model:                            OLS   Adj. R-squared:                  0.582
 Method:                 Least Squares   F-statistic:                     75.68
 Date:                Thu, 15 Oct 2026   Prob (F-statistic):           2.14e-30
-Time:                        14:23:21   Log-Likelihood:                 264.84
+Time:                        14:29:10   Log-Likelihood:                 264.84
 No. Observations:                 162   AIC:                            -521.7
 Df Residuals:                     158   BIC:                            -509.3
 Df Model:                           3                                         

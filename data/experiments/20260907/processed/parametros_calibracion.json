@@ -1,0 +1,18 @@
+{
+    "blur_k": 9,
+    "clean_k": 1,
+    "seed_glue": 20,
+    "seed_h_max": 25,
+    "seed_s_min": 93,
+    "seed_v_min": 124,
+    "root_s_max": 82,
+    "root_v_min": 149,
+    "min_area_seed": 31,
+    "root_bridge": 2,
+    "min_area_root": 51,
+    "hsv_h_min": 15,
+    "hsv_h_max": 40,
+    "root_solidity_max": 0.8934000641639902,
+    "root_aspect_min": 0.19327846072585275,
+    "root_aspect_max": 11.749485453856833
+}
