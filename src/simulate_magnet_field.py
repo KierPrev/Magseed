@@ -63,6 +63,19 @@ DEFAULT_JOBS = [
 ]
 
 
+
+def guardar_figura(fig, output_path, **kwargs) -> None:
+    """PNG para mirar y PDF para LaTeX.
+
+    El PDF es el unico de los dos que queda versionado, porque el
+    .gitignore bloquea *.png. Sin el, el documento no compila en un clon
+    limpio del repositorio.
+    """
+    destino = Path(output_path)
+    fig.savefig(destino.with_suffix(".png"), dpi=200, **kwargs)
+    fig.savefig(destino.with_suffix(".pdf"), **kwargs)
+
+
 def load_measurements(csv_path: Path) -> pd.DataFrame:
     df = pd.read_csv(csv_path, decimal=",")
     required = {"Tick Distancia", "Distancia real", *CSV_COLUMN_BY_POINT.values()}
@@ -233,7 +246,7 @@ def plot_z_offset_sweep(
     fig.tight_layout()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    guardar_figura(fig, output_path)
     plt.close(fig)
 
 
@@ -284,7 +297,7 @@ def plot_comparison(
     fig.tight_layout()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    guardar_figura(fig, output_path)
     plt.close(fig)
 
 
@@ -310,7 +323,7 @@ def plot_corner_radius_sweep(
     fig.tight_layout()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    guardar_figura(fig, output_path)
     plt.close(fig)
 
 
@@ -430,7 +443,7 @@ def plot_field_map(
     fig.tight_layout()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    guardar_figura(fig, output_path)
     plt.close(fig)
 
 
