@@ -1,0 +1,2 @@
+analysis_scope,source_exp_id,response_metric,treatment_label,control_label,analysis_type,method,estimate_diff_vs_control,std_error,statistic,statistic_name,p_value,p_value_adjusted,reject_null_fdr_bh,conf_int_low,conf_int_high,n_treatment,n_control,mean_treatment,mean_control,notes
+experiment,20260518,,,Control,treatment_vs_control_not_run,skipped,,,,t,,,,,,0,0,,,No hay grupo Control disponible para comparar.

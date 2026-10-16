@@ -1,4 +1,4 @@
 analysis_scope,source_exp_id,response_metric,model_formula,n_obs,residual_df,shapiro_w,shapiro_p_value,brown_forsythe_statistic,brown_forsythe_p_value,normality_alpha_0_05_ok,homoscedasticity_alpha_0_05_ok,notes
-negative_control_combined,"20260404,20260428,20260507",raw_delta_weight,raw_delta_weight ~ C(exp_id) + C(floor) + C(position_factor),81,68,0.9879179082454097,0.6509927060647362,0.754428175046442,0.47367967046408893,True,True,
-negative_control_combined,"20260404,20260428,20260507",pct_change,pct_change ~ C(exp_id) + C(floor) + C(position_factor),81,68,0.9868059668217262,0.5772888869282657,3.6615287757704573,0.030206437968162816,True,False,
-negative_control_combined,"20260404,20260428,20260507",raw_log_ratio,raw_log_ratio ~ C(exp_id) + C(floor) + C(position_factor),81,68,0.9873056661617108,0.6101145108026935,3.6738569837025117,0.029867967880827517,True,False,
+negative_control_combined,"20260404,20260428,20260507",raw_delta_weight,raw_delta_weight ~ C(exp_id) + C(floor) + C(position_factor),81,68,0.9879179082454097,0.6509927060647377,0.754428175046442,0.47367967046408893,True,True,
+negative_control_combined,"20260404,20260428,20260507",pct_change,pct_change ~ C(exp_id) + C(floor) + C(position_factor),81,68,0.9868059668217254,0.57728888692821,3.6615287757704573,0.030206437968162816,True,False,
+negative_control_combined,"20260404,20260428,20260507",raw_log_ratio,raw_log_ratio ~ C(exp_id) + C(floor) + C(position_factor),81,68,0.9873056661617112,0.6101145108027219,3.6738569837025117,0.029867967880827517,True,False,

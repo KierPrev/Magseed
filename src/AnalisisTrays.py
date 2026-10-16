@@ -102,6 +102,19 @@ plt: Any | None = None
 sns: Any | None = None
 
 
+
+def guardar_figura(fig, output_path, **kwargs) -> None:
+    """PNG para mirar y PDF para LaTeX.
+
+    El PDF es vectorial y, sobre todo, es el unico de los dos que queda
+    versionado: el .gitignore bloquea *.png. Sin el PDF, el documento no
+    compila en un clon limpio del repositorio.
+    """
+    destino = Path(output_path)
+    fig.savefig(destino.with_suffix(".png"), dpi=200, **kwargs)
+    fig.savefig(destino.with_suffix(".pdf"), **kwargs)
+
+
 def cargar_dependencias_plotting() -> bool:
     global plt, sns
 
@@ -1583,7 +1596,7 @@ def guardar_boxplot_stripplot(
     ax.set_xlabel(xlabel or x)
     ax.set_ylabel(ylabel)
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200)
+    guardar_figura(fig, output_path)
     plt.close(fig)
 
 
@@ -1624,7 +1637,7 @@ def guardar_heatmap(
     ax.set_xlabel("position")
     ax.set_ylabel("floor")
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200)
+    guardar_figura(fig, output_path)
     plt.close(fig)
 
 
@@ -1682,7 +1695,7 @@ def guardar_forest_plot_tratamiento_vs_control(
     ax.set_ylabel("Tratamiento")
     ax.set_title(METRIC_FOREST_TITLES.get(response_metric, "Tratamiento vs Control"))
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200)
+    guardar_figura(fig, output_path)
     plt.close(fig)
 
 
@@ -2731,7 +2744,7 @@ def guardar_barplot_control_negativo_combinado(
 
     fig.tight_layout()
     output_path = output_dir / "negative_control_combined_pct_change_barplot.png"
-    fig.savefig(output_path, dpi=200)
+    guardar_figura(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -2841,7 +2854,7 @@ def guardar_barplot_pisos_control_negativo(
         output_dir
         / f"negative_control_combined_{response_metric}_{output_suffix}_barplot.png"
     )
-    fig.savefig(output_path, dpi=200)
+    guardar_figura(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -2906,7 +2919,7 @@ def guardar_plot_control_negativo_combinado(
     ax.legend(title="Día", frameon=True, loc="best")
     fig.tight_layout()
     output_path = output_dir / "negative_control_combined_pct_change_by_floor_day.png"
-    fig.savefig(output_path, dpi=200)
+    guardar_figura(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -3076,7 +3089,7 @@ def guardar_plot_control_negativo_facetas(
     fig.suptitle(titulo, y=1.02)
     fig.tight_layout()
     output_path = output_dir / output_filename
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    guardar_figura(fig, output_path, bbox_inches="tight")
     plt.close(fig)
     return output_path
 
