@@ -1,0 +1,64 @@
+Grupos incluidos:
+  Ceramica N (5 mL): 20260331, 20260608, 20260622
+  Neodimio N (5 mL): 20260626, 20260721, 20260727
+  Neodimio N (3 mL): 20260804, 20260907, 20260911
+
+Modelo: pct_change ~ B_compart_mT + C(iman)
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:             pct_change   R-squared:                       0.578
+Model:                            OLS   Adj. R-squared:                  0.573
+Method:                 Least Squares   F-statistic:                     109.1
+Date:                Fri, 06 Nov 2026   Prob (F-statistic):           1.64e-44
+Time:                        16:58:25   Log-Likelihood:                 419.23
+No. Observations:                 243   AIC:                            -830.5
+Df Residuals:                     239   BIC:                            -816.5
+Df Model:                           3                                         
+Covariance Type:            nonrobust                                         
+================================================================================================
+                                   coef    std err          t      P>|t|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                        0.4944      0.005     98.575      0.000       0.485       0.504
+C(iman)[T.Neodimio N (3 mL)]    -0.1125      0.007    -16.111      0.000      -0.126      -0.099
+C(iman)[T.Neodimio N (5 mL)]    -0.0128      0.007     -1.829      0.069      -0.027       0.001
+B_compart_mT                 -1.135e-05    4.2e-05     -0.270      0.787   -9.41e-05    7.14e-05
+==============================================================================
+Omnibus:                       21.371   Durbin-Watson:                   1.054
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):               31.862
+Skew:                           0.558   Prob(JB):                     1.21e-07
+Kurtosis:                       4.379   Cond. No.                         297.
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+Modelo con interaccion: pct_change ~ B_compart_mT * C(iman)
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:             pct_change   R-squared:                       0.579
+Model:                            OLS   Adj. R-squared:                  0.570
+Method:                 Least Squares   F-statistic:                     65.24
+Date:                Fri, 06 Nov 2026   Prob (F-statistic):           1.25e-42
+Time:                        16:58:25   Log-Likelihood:                 419.60
+No. Observations:                 243   AIC:                            -827.2
+Df Residuals:                     237   BIC:                            -806.2
+Df Model:                           5                                         
+Covariance Type:            nonrobust                                         
+=============================================================================================================
+                                                coef    std err          t      P>|t|      [0.025      0.975]
+-------------------------------------------------------------------------------------------------------------
+Intercept                                     0.4996      0.008     63.077      0.000       0.484       0.515
+C(iman)[T.Neodimio N (3 mL)]                 -0.1178      0.010    -11.612      0.000      -0.138      -0.098
+C(iman)[T.Neodimio N (5 mL)]                 -0.0189      0.010     -1.863      0.064      -0.039       0.001
+B_compart_mT                                 -0.0002      0.000     -0.885      0.377      -0.001       0.000
+B_compart_mT:C(iman)[T.Neodimio N (3 mL)]     0.0002      0.000      0.797      0.426      -0.000       0.001
+B_compart_mT:C(iman)[T.Neodimio N (5 mL)]     0.0002      0.000      0.858      0.392      -0.000       0.001
+==============================================================================
+Omnibus:                       20.793   Durbin-Watson:                   1.042
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):               30.573
+Skew:                           0.550   Prob(JB):                     2.30e-07
+Kurtosis:                       4.345   Cond. No.                         557.
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.

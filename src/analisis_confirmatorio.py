@@ -527,13 +527,13 @@ def fig_forest_peso_germinacion(resultado_peso: ResultadoPeso, resultado_germ: R
                             vs_control["ic_high_%"] - vs_control["dif_%"]],
                       fmt="o", color="black", ecolor="gray", elinewidth=1.6, capsize=4, markersize=6)
     ax_peso.set_yticks(vs_control["floor"])
-    ax_peso.set_yticklabels([f"piso {int(f)}\n{b:.0f} mT" for f, b in zip(vs_control["floor"], vs_control["B_mT"])])
+    ax_peso.set_yticklabels([f"nivel {int(f)}\n{b:.0f} mT" for f, b in zip(vs_control["floor"], vs_control["B_mT"])])
     ax_peso.invert_yaxis()
     # Aire arriba del primer piso para que la leyenda no tape el marcador.
     pisos = vs_control["floor"]
     ax_peso.set_ylim(pisos.max() + 0.6, pisos.min() - 1.1)
     ax_peso.set_xlabel("Diferencia de imbibicion a 72 h vs control (%)")
-    ax_peso.set_title("Peso: efecto acotado dentro del margen")
+    ax_peso.set_title("Imbibición: efecto acotado dentro del margen")
     ax_peso.grid(True, axis="x", linestyle="--", alpha=0.4)
     ax_peso.legend(loc="upper left", fontsize=9)
 
@@ -562,7 +562,7 @@ def fig_forest_peso_germinacion(resultado_peso: ResultadoPeso, resultado_germ: R
     n_total = len(resultado_peso.conf_df)
     n_control = (resultado_peso.conf_df["con_iman"] == 0).sum()
     n_tratadas = (resultado_peso.conf_df["con_iman"] == 1).sum()
-    fig.suptitle(f"{titulo} | n = {n_total} bandejas ({n_control} control / {n_tratadas} tratadas) "
+    fig.suptitle(f"{titulo} | n = {n_total} cajas ({n_control} control / {n_tratadas} tratadas) "
                  f"| bloques completos aleatorizados", fontsize=10)
     fig.tight_layout()
     return fig
@@ -600,7 +600,7 @@ def fig_boxplot_germinacion(resultado_germ: ResultadoGerminacion, titulo: str,
     box_medias = box_df.groupby("treatment_floor")["germinadas"].mean().reindex(box_orden)
     ax_box.scatter(range(len(box_orden)), box_medias.values, marker="D", s=85,
                    facecolors="white", edgecolors="black", linewidths=1.6, zorder=10,
-                   label="media del piso")
+                   label="media del nivel")
 
     box_p = []
     for f in box_orden:
@@ -623,10 +623,10 @@ def fig_boxplot_germinacion(resultado_germ: ResultadoGerminacion, titulo: str,
 
     ax_box.set_xticklabels([f"{f}\n{'sin campo' if f == control_floor else format(box_df.loc[box_df.treatment_floor == f, 'B_compart_mT'].iloc[0], '.0f') + ' mT'}"
                             for f in box_orden])
-    ax_box.set_xlabel("treatment_floor (campo del compartimento)")
+    ax_box.set_xlabel("Nivel de la torre (campo en el centro del compartimento)")
     ax_box.set_ylabel("Semillas germinadas de 20")
     ax_box.set_ylim(top=box_top + 3.2)
-    ax_box.set_title(f"Germinacion por piso vs control | {titulo} | n=6 bandejas por piso")
+    ax_box.set_title(f"Germinación por nivel vs control | {titulo} | n=9 cajas por nivel")
     ax_box.grid(True, axis="y", linestyle="--", alpha=0.4)
     ax_box.legend(loc="lower right", fontsize=9, ncol=2)
     fig_box.tight_layout()
@@ -672,7 +672,7 @@ def fig_boxplot_radicula(resultado_rad: ResultadoRadicula, titulo: str,
     rl_medias = rl_df.groupby("treatment_floor")["centrado"].mean().reindex(rl_orden)
     ax_rl.scatter(range(len(rl_orden)), rl_medias.values, marker="D", s=85,
                   facecolors="white", edgecolors="black", linewidths=1.6, zorder=10,
-                  label="media del piso")
+                  label="media del nivel")
 
     p_map = vs_control.set_index("floor")[["p", "p_holm"]]
     rl_top = rl_df["centrado"].max()
@@ -687,12 +687,12 @@ def fig_boxplot_radicula(resultado_rad: ResultadoRadicula, titulo: str,
 
     ax_rl.set_xticklabels([f"{f}\n{'sin campo' if f == control_floor else format(rl_df.loc[rl_df.treatment_floor == f, 'B_compart_mT'].iloc[0], '.0f') + ' mT'}"
                            for f in rl_orden])
-    ax_rl.set_xlabel("treatment_floor (campo del compartimento)")
+    ax_rl.set_xlabel("Nivel de la torre (campo en el centro del compartimento)")
     ax_rl.set_ylabel("Largo de radicula: desvio respecto de su bloque (mm)")
     ax_rl.set_ylim(top=rl_top + 0.22 * rl_rango)
     fechas_usadas = ", ".join(sorted(rl_df["fecha"].unique()))
     ax_rl.set_title(
-        f"Largo de radicula por piso vs control | {titulo} ({fechas_usadas})\n"
+        f"Largo de radícula por nivel vs control | {titulo} ({fechas_usadas})\n"
         f"Centrado por bloque (fecha x piso fisico); en escala absoluta la media del control "
         f"es {resultado_rad.media_control:.1f} mm | p ajustado por bloque"
     )
@@ -897,7 +897,7 @@ def run_control_positivo(fechas: list[str], out_dir: Path) -> Figure:
                edgecolors="black", linewidths=1.6, zorder=10, label="media del nivel")
     ax.set_xlabel("Agua aplicada (mL)")
     ax.set_ylabel("Imbibicion a 72 h ((post - pre) / pre)")
-    ax.set_title(f"Control positivo: imbibicion vs agua | n = {len(df)} bandejas\n"
+    ax.set_title(f"Control positivo: imbibición vs agua | n = {len(df)} cajas\n"
                  f"pendiente {modelo.params['water_ml']:+.4f}/mL, p = {modelo.pvalues['water_ml']:.1e}")
     ax.grid(True, axis="y", linestyle="--", alpha=0.4)
     ax.legend(title="Fecha", fontsize=9)

@@ -92,19 +92,26 @@ compilación. Está explicado en `.latexmkrc`.
 
 Lo necesario para no escribir cualquier cosa; el detalle está en el inventario.
 
-- **El piso 9 es SIEMPRE el control** (sin campo). Los pisos 1 a 8 reciben campo
-  decreciente: el piso 1 es el más intenso.
-- **La unidad experimental es la BANDEJA, nunca la semilla.** Analizar semillas
-  sueltas sería pseudo-replicación (las 20 semillas de una bandeja comparten
+- **El nivel 9 es SIEMPRE el control** (sin campo). Los niveles 1 a 8 de la torre
+  reciben campo decreciente: el nivel 1 es el más intenso. En el código la
+  columna se llama `treatment_floor`, pero **en el texto de la tesis los de la
+  torre son "niveles"**; "pisos" son solo A, B y C del sistema de germinación.
+- **La unidad experimental es la muestra (una caja), nunca la semilla.** En el
+  código se llama "bandeja"; en el texto de la tesis, "caja". Analizar semillas
+  sueltas sería pseudo-replicación (las semillas de una caja comparten
   tratamiento).
 - El diseño es de bloques completos aleatorizados, bloque = `fecha × floor`.
   Todos los modelos llevan `C(bloque)`.
 - `pct_change` es **imbibición** (absorción de agua a 72 h), **no biomasa**.
   Nombrarlo así en el texto.
-- Solo entran en la tesis **3 experimentos de Cerámica N** (20260331, 20260608,
-  20260622) y **3 de Neodimio N** (20260804, 20260907, 20260911). Todo el resto
-  de los experimentos de imán está descartado — el inventario lista cuáles y por
-  qué.
+- Entran en la tesis **tres grupos de 3 experimentos**: Cerámica N 5 mL
+  (20260331, 20260608, 20260622), Neodimio N 5 mL (20260626, 20260721,
+  20260727) y Neodimio N 3 mL (20260804, 20260907, 20260911). Germinación y
+  radícula existen **solo** en Neodimio N 3 mL. El resto de los experimentos de
+  imán está descartado — el inventario lista cuáles y por qué.
+- El plan de análisis estadístico se definió **después** de tener los datos;
+  antes solo se fijó qué medir y cómo, y el umbral del 10%. No escribas que el
+  análisis fue pre-especificado.
 
 ## Cómo se presenta el resultado
 
@@ -115,15 +122,19 @@ El resultado de los imanes es **nulo**, y la forma de decirlo importa:
 - El **control positivo** (agua: 2/5/6 mL, p=2.9e-07) demuestra que el método sí
   detecta un efecto real cuando existe. Es lo que convierte "ausencia de
   evidencia" en "evidencia de ausencia".
-- El piso 3 (77 mT) aparece alto en germinación y radícula, pero **no sobrevive
-  la corrección por multiplicidad** (Holm). Es una hipótesis a testear, nunca un
+- El nivel 3 (77 mT) aparece alto en radícula (p=0.012, Holm 0.093) y el nivel 6
+  (22 mT) en germinación (p=0.01, Holm 0.06), pero **ninguno sobrevive la
+  corrección por multiplicidad** (Holm). Es una hipótesis a testear, nunca un
   hallazgo. No lo presentes como resultado.
 
 ## Advertencia sobre la figura de radícula
 
 `fig_radicula_boxplot.pdf` **no está en milímetros absolutos**: el eje Y es el
-desvío respecto del bloque. Las tres fechas de Neodimio N midieron en escalas
-distintas porque el pipeline de fotos no es consistente entre fechas, así que en
+desvío respecto del bloque. La escala px→mm NO es el problema: cada foto se
+calibra por separado con la regla de referencia (la cámara estaba a distancia
+variable). Lo que no es consistente entre fechas es la *segmentación*: por la
+resolución distinta de las fotos, el algoritmo parte o pierde radículas en
+proporciones distintas según la fecha. No escribas "escalas distintas". En
 mm crudos el alto de cada caja reflejaba la distancia entre fechas y no el
 efecto del tratamiento.
 

@@ -121,8 +121,9 @@ conteo de germinación y el registro fotográfico.
   comparación dejaría de ser la que se aleatorizó.
 - **Las fotos de 20260907 son exports reducidos** (960×1280 = 1.2 MP) contra
   4618×3464 (16 MP) de las otras dos. Se reprocesaron con parámetros de
-  calibración tuneados (150 → 280 raíces), pero **las tres fechas de Neodimio N
-  siguen midiendo en escalas distintas**: el efecto de bloque da F≈37, p<0.0001,
+  calibración tuneados (150 → 280 raíces), pero **la segmentación de las tres
+  fechas de Neodimio N sigue sin ser comparable** (la escala px→mm sí: cada foto
+  se calibra con la regla): el efecto de bloque da F≈37, p<0.0001,
   mucho más fuerte que cualquier efecto de tratamiento. Por eso la figura de
   radícula se grafica **centrada por bloque** (ver sección 4).
 
@@ -210,8 +211,8 @@ descartado).
 `fig_radicula_boxplot.png` **no está en milímetros absolutos**: el eje Y es el
 desvío respecto del bloque (`mediana_mm` menos el promedio de su bloque).
 
-Motivo: cada fecha midió en su propia escala porque el pipeline de fotos no es
-consistente entre fechas (20260804 sobre-segmenta: 69 objetos por bandeja para
+Motivo: la escala px→mm se calibra foto por foto con la regla, pero la
+segmentación no es consistente entre fechas (20260804 sobre-segmenta: 69 objetos por bandeja para
 20 semillas, mediana 2.5 mm; 20260907 sub-detecta: 11 objetos, mediana 9.6 mm;
 20260911 es el más plausible: 24 objetos, mediana 5.6 mm). Si se grafican los mm
 crudos juntos, el alto de cada caja refleja la distancia entre fechas y no el
@@ -264,8 +265,8 @@ Para orientar dónde va cada figura en el argumento del documento:
   el mejor de los tres (dosificador exacto).
 - **Germinación, Neodimio N 3 mL** (n=81): **+6.2 puntos porcentuales**,
   IC95 [−2.0, +14.5], p=0.14. Sin tendencia dosis-respuesta (p=0.23). Ningún
-  nivel sobrevive Holm; el más alto es el nivel 6 (22 mT, crudo 0.022, Holm
-  0.178) mientras el nivel 1 (263 mT) queda **por debajo** del control.
+  nivel sobrevive Holm; el más alto es el nivel 6 (22 mT, crudo 0.01, Holm
+  0.06) mientras el nivel 1 (263 mT) queda **por debajo** del control.
 - **Radícula, Neodimio N 3 mL** (n=77): **+0.60 mm (+9.3%)**, IC95 [−9.2%,
   +27.8%], p=0.32. Efecto mínimo detectable 26.4% (endpoint de baja potencia).
 - **Interacción agua × campo** (n=162): el efecto del imán **no difiere** entre
@@ -287,9 +288,9 @@ tests de equivalencia (TOST) acotan el efecto de los imanes por debajo del
 margen de relevancia biológica. Esa es la diferencia entre "ausencia de
 evidencia" y "evidencia de ausencia".
 
-Observación menor, **no es un hallazgo**: el piso 3 (77 mT) aparece como el más
-alto tanto en germinación como en radícula (radícula p=0.012 crudo, pero
-**Holm=0.09**, no sobrevive la corrección por multiplicidad). Mencionable como
+Observación menor, **no es un hallazgo**: el nivel 3 (77 mT) aparece como el más
+alto en radícula (p=0.012 crudo, pero **Holm=0.09**, no sobrevive la corrección
+por multiplicidad). En germinación el más alto es el nivel 6 (Holm 0.06). Mencionable como
 hipótesis a testear, nunca como resultado.
 
 ---

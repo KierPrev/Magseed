@@ -347,6 +347,48 @@ def plot_field_map(
     implica que el modelo este mal, sino que la sonda esta midiendo en la
     region de campo de retorno.
     """
+    fig, ax = plt.subplots(figsize=(11, 9))
+    mesh = dibujar_mapa_campo(
+        ax,
+        dimension_mm,
+        br_fit,
+        measured_by_point,
+        distances_mm,
+        x_range_mm,
+        z_below_margin_mm,
+        z_above_mm,
+        resolution,
+    )
+    fig.colorbar(mesh, ax=ax, label="Bz (mT)")
+    ax.set_title(
+        f"{title}\nCorte xz (y=0) de Bz — Br ajustado = {br_fit:.1f} mT, "
+        f"contorno negro = Bz = 0",
+        fontsize=11,
+    )
+    fig.tight_layout()
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    guardar_figura(fig, output_path)
+    plt.close(fig)
+
+
+def dibujar_mapa_campo(
+    ax,
+    dimension_mm: tuple[float, float, float],
+    br_fit: float,
+    measured_by_point: dict[str, np.ndarray],
+    distances_mm: np.ndarray,
+    x_range_mm: float,
+    z_below_margin_mm: float,
+    z_above_mm: float,
+    resolution: int,
+    leyenda: bool = True,
+):
+    """Dibuja el mapa de plot_field_map sobre un eje dado y devuelve el mesh.
+
+    Separado para que plot_field_maps_combinados.py arme una figura con los
+    dos imanes lado a lado reusando exactamente el mismo dibujo.
+    """
     width_mm, _, thickness_mm = dimension_mm
     z_face = thickness_mm / 2
 
@@ -360,12 +402,9 @@ def plot_field_map(
     Bx = b[:, 0].reshape(X.shape)
     Bz = b[:, 2].reshape(X.shape)
 
-    fig, ax = plt.subplots(figsize=(11, 9))
-
     vmax = float(np.nanpercentile(np.abs(Bz), 99))
     norm = TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
     mesh = ax.pcolormesh(X, Z, Bz, cmap="seismic", norm=norm, shading="auto")
-    fig.colorbar(mesh, ax=ax, label="Bz (mT)")
 
     ax.contour(X, Z, Bz, levels=[0.0], colors="black", linewidths=2.5)
 
@@ -431,20 +470,12 @@ def plot_field_map(
 
     ax.set_xlabel("x (mm)")
     ax.set_ylabel("z (mm)")
-    ax.set_title(
-        f"{title}\nCorte xz (y=0) de Bz — Br ajustado = {br_fit:.1f} mT, "
-        f"contorno negro = Bz = 0",
-        fontsize=11,
-    )
     ax.set_xlim(-x_range_mm, x_range_mm)
     ax.set_ylim(z.min(), z.max())
     ax.set_aspect("equal")
-    ax.legend(fontsize=7, loc="lower left", framealpha=0.9)
-    fig.tight_layout()
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    guardar_figura(fig, output_path)
-    plt.close(fig)
+    if leyenda:
+        ax.legend(fontsize=7, loc="lower left", framealpha=0.9)
+    return mesh
 
 
 def run(
