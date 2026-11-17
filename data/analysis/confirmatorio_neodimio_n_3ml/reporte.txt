@@ -74,6 +74,17 @@ con iman     72  0.774  0.116
 
 A) Cualquier iman vs control: +6.2 pp IC95 [-2.0, +14.5] p = 0.1352
 B) Tendencia dosis: -3.9 pp por decada de mT p = 0.2324
+
+C) Cada nivel vs control, ajustado por bloque (Holm):
+ nivel  B_mT  dif_semillas  dif_pp  ic95_low_pp  ic95_high_pp      p  p_holm
+     1 263.0         -0.44    -2.2        -13.1           8.7 0.6850  1.0000
+     2 133.6          1.78     8.9         -2.0          19.8 0.1081  0.7564
+     3  77.3          1.33     6.7         -4.2          17.6 0.2261  1.0000
+     4  48.5          1.56     7.8         -3.1          18.7 0.1587  0.9522
+     5  32.2          1.11     5.6         -5.3          16.5 0.3122  1.0000
+     6  22.3          2.56    12.8          1.9          23.7 0.0223  0.1781
+     7  15.9          1.22     6.1         -4.8          17.0 0.2667  1.0000
+     8  11.8          0.89     4.4         -6.5          15.3 0.4181  1.0000
    p por permutacion dentro de bloque (5000 remuestreos): 0.2326
 
 --- Sensibilidad (peso ajustado por germinacion; sesgo de mediador) ---

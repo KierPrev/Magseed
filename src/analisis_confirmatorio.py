@@ -10,7 +10,8 @@ figuras/tablas/reporte en data/analysis/confirmatorio_<grupo>/.
 
 Metodologia (igual para todos los grupos):
   - Unidad experimental = LA BANDEJA (nunca la semilla).
-  - Diseno = bloques completos aleatorizados: bloque = fecha-floor.
+  - Diseno por bloques: bloque = fecha-floor. Los grupos de neodimio son
+    completos y balanceados; ceramica tiene un desbalance declarado en 20260331.
   - pct_change = imbibicion a 72h, no biomasa.
   - Germinacion (si el experimento la registro) se analiza como proporcion
     por bandeja, nunca a nivel semilla (seria pseudo-replicacion).
@@ -174,8 +175,10 @@ class ResultadoPeso:
 class ResultadoGerminacion:
     disponible: bool
     gm_df: pd.DataFrame | None = None
+    vs_control: pd.DataFrame | None = None
     modelo_iman: Any = None
     modelo_dosis: Any = None
+    modelo_niveles: Any = None
     p_perm: float | None = None
     diagnostico: str = ""
 
@@ -352,6 +355,41 @@ def analizar_germinacion(conf_df: pd.DataFrame, n_perm: int = 5000, seed: int = 
         obs = m_dosis.params["log10_B"]
         print(f"B) Tendencia dosis: {100*obs:+.1f} pp por decada de mT p = {m_dosis.pvalues['log10_B']:.4f}")
 
+        # Contrastes secundarios nivel contra control con el mismo ajuste por
+        # bloque declarado para el resto del analisis. La figura anterior usaba
+        # t de Welch sin bloque y, por lo tanto, no coincidia con el modelo del
+        # texto. Treatment(reference=9) hace que cada coeficiente sea la
+        # diferencia del nivel correspondiente respecto del control interno.
+        m_niveles = smf.ols(
+            f"prop_germ ~ C(treatment_floor, Treatment(reference={CONTROL_FLOOR})) + C(bloque)",
+            data=gm_df,
+        ).fit()
+        filas = []
+        for nivel in sorted(gm_tratados["treatment_floor"].unique()):
+            termino = (
+                f"C(treatment_floor, Treatment(reference={CONTROL_FLOOR}))"
+                f"[T.{int(nivel)}]"
+            )
+            lo_nivel, hi_nivel = m_niveles.conf_int().loc[termino]
+            filas.append({
+                "nivel": int(nivel),
+                "B_mT": gm_df.loc[
+                    gm_df["treatment_floor"] == nivel, "B_compart_mT"
+                ].iloc[0],
+                "dif_semillas": N_SEMILLAS * m_niveles.params[termino],
+                "dif_pp": 100 * m_niveles.params[termino],
+                "ic95_low_pp": 100 * lo_nivel,
+                "ic95_high_pp": 100 * hi_nivel,
+                "p": m_niveles.pvalues[termino],
+            })
+        vs_control = pd.DataFrame(filas)
+        vs_control["p_holm"] = multipletests(vs_control["p"], method="holm")[1]
+        print("\nC) Cada nivel vs control, ajustado por bloque (Holm):")
+        print(vs_control.round({
+            "B_mT": 1, "dif_semillas": 2, "dif_pp": 1,
+            "ic95_low_pp": 1, "ic95_high_pp": 1, "p": 4, "p_holm": 4,
+        }).to_string(index=False))
+
         rng = np.random.default_rng(seed)
         perm = gm_tratados.copy()
         extremos = 0
@@ -370,7 +408,8 @@ def analizar_germinacion(conf_df: pd.DataFrame, n_perm: int = 5000, seed: int = 
         print(f"  ajustado    : {100*sens_m.params['con_iman']/media_control_peso:+.2f}% p = {sens_m.pvalues['con_iman']:.4f}")
 
     return ResultadoGerminacion(
-        disponible=True, gm_df=gm_df, modelo_iman=m_iman, modelo_dosis=m_dosis,
+        disponible=True, gm_df=gm_df, vs_control=vs_control,
+        modelo_iman=m_iman, modelo_dosis=m_dosis, modelo_niveles=m_niveles,
         p_perm=p_perm, diagnostico=buf.getvalue(),
     )
 
@@ -563,7 +602,7 @@ def fig_forest_peso_germinacion(resultado_peso: ResultadoPeso, resultado_germ: R
     n_control = (resultado_peso.conf_df["con_iman"] == 0).sum()
     n_tratadas = (resultado_peso.conf_df["con_iman"] == 1).sum()
     fig.suptitle(f"{titulo} | n = {n_total} cajas ({n_control} control / {n_tratadas} tratadas) "
-                 f"| bloques completos aleatorizados", fontsize=10)
+                 f"| modelo ajustado por bloque", fontsize=10)
     fig.tight_layout()
     return fig
 
@@ -602,24 +641,17 @@ def fig_boxplot_germinacion(resultado_germ: ResultadoGerminacion, titulo: str,
                    facecolors="white", edgecolors="black", linewidths=1.6, zorder=10,
                    label="media del nivel")
 
-    box_p = []
-    for f in box_orden:
-        if f == control_floor:
-            box_p.append(np.nan)
-            continue
-        box_p.append(stats.ttest_ind(
-            box_df.loc[box_df.treatment_floor == f, "germinadas"], box_ctrl, equal_var=False).pvalue)
-    validos = [i for i, p in enumerate(box_p) if not np.isnan(p)]
-    box_p_holm = np.full(len(box_p), np.nan)
-    box_p_holm[validos] = multipletests([box_p[i] for i in validos], method="holm")[1]
+    contrastes = resultado_germ.vs_control.set_index("nivel")
 
     box_top = box_df["germinadas"].max()
     for i, f in enumerate(box_orden):
         if f == control_floor:
             ax_box.text(i, box_top + 1.4, "CONTROL", ha="center", fontsize=9, color="tab:red", fontweight="bold")
             continue
-        ax_box.text(i, box_top + 1.1, f"p={box_p[i]:.2f}\nHolm {box_p_holm[i]:.2f}",
-                    ha="center", fontsize=8, color="black" if box_p[i] < 0.05 else "gray")
+        p = contrastes.loc[f, "p"]
+        p_holm = contrastes.loc[f, "p_holm"]
+        ax_box.text(i, box_top + 1.1, f"p={p:.2f}\nHolm {p_holm:.2f}",
+                    ha="center", fontsize=8, color="black" if p < 0.05 else "gray")
 
     ax_box.set_xticklabels([f"{f}\n{'sin campo' if f == control_floor else format(box_df.loc[box_df.treatment_floor == f, 'B_compart_mT'].iloc[0], '.0f') + ' mT'}"
                             for f in box_orden])
@@ -736,6 +768,7 @@ def run_grupo(nombre: str, fechas: list[str], titulo: str, dosis_csv: Path, out_
             B_mT=("B_compart_mT", "first"), media=("germinadas", "mean"),
             sd=("germinadas", "std"), n=("germinadas", "count"),
         ).round(3).to_csv(out_dir / "germinacion_por_piso.csv")
+        resultado_germ.vs_control.to_csv(out_dir / "germinacion_vs_control.csv", index=False)
         guardar_figura(fig_germ_box, out_dir / "fig_germinacion_boxplot")
 
     if resultado_rad.disponible:

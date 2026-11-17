@@ -100,7 +100,9 @@ Lo necesario para no escribir cualquier cosa; el detalle está en el inventario.
   código se llama "bandeja"; en el texto de la tesis, "caja". Analizar semillas
   sueltas sería pseudo-replicación (las semillas de una caja comparten
   tratamiento).
-- El diseño es de bloques completos aleatorizados, bloque = `fecha × floor`.
+- El diseño es por bloques, bloque = `fecha × floor`. Los grupos de neodimio
+  tienen bloques completos y balanceados; cerámica presenta el desbalance
+  parcial documentado para 20260331. Todos los modelos incluyen `C(bloque)`.
   Todos los modelos llevan `C(bloque)`.
 - `pct_change` es **imbibición** (absorción de agua a 72 h), **no biomasa**.
   Nombrarlo así en el texto.
@@ -123,7 +125,7 @@ El resultado de los imanes es **nulo**, y la forma de decirlo importa:
   detecta un efecto real cuando existe. Es lo que convierte "ausencia de
   evidencia" en "evidencia de ausencia".
 - El nivel 3 (77 mT) aparece alto en radícula (p=0.012, Holm 0.093) y el nivel 6
-  (22 mT) en germinación (p=0.01, Holm 0.06), pero **ninguno sobrevive la
+  (22 mT) en germinación (p=0.022, Holm 0.178), pero **ninguno sobrevive la
   corrección por multiplicidad** (Holm). Es una hipótesis a testear, nunca un
   hallazgo. No lo presentes como resultado.
 

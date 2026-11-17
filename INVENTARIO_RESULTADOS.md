@@ -30,9 +30,11 @@ Se evalúa si un campo magnético estático afecta la germinación de semillas.
 individuales sería pseudo-replicación (las 20 semillas de una bandeja comparten
 el mismo tratamiento). Todos los análisis respetan esto.
 
-El diseño es de **bloques completos aleatorizados**: el bloque es `fecha × floor`
-(ej. `20260804-A`). Cada bloque contiene los 9 tratamientos exactamente una vez.
-Todos los modelos incluyen el término `C(bloque)`.
+El diseño es **por bloques**: el bloque es `fecha × floor` (ej.
+`20260804-A`). En los dos grupos de neodimio cada bloque contiene los 9
+tratamientos exactamente una vez. Cerámica presenta un desbalance parcial en
+20260331, documentado en Métodos. Todos los modelos incluyen el término
+`C(bloque)` y permiten ese desbalance.
 
 ### Los tres endpoints
 
@@ -241,6 +243,7 @@ sensibilidad. Es la fuente para cualquier número citado en el texto.
 | `confirmatorio_{ceramica_n_5ml,neodimio_n_5ml,neodimio_n_3ml}/reporte.txt` | Reporte completo del grupo |
 | `confirmatorio_*/peso_vs_control.csv` | Cada piso vs control: diferencia, IC95, p, p_holm |
 | `confirmatorio_neodimio_n_3ml/germinacion_por_piso.csv` | Media, sd y n de germinadas por piso |
+| `confirmatorio_neodimio_n_3ml/germinacion_vs_control.csv` | Cada nivel de germinación vs control, ajustado por bloque: diferencia, IC95, p y p_holm |
 | `confirmatorio_neodimio_n_3ml/radicula_vs_control.csv` | Cada piso vs control en mm y % |
 | `linea_base_y_regimenes/reporte.txt` | Línea de base por fecha y test de interacción agua × campo |
 | `control_positivo_combinado/reporte_control_positivo.txt` | Modelo y contrastes del control positivo |
@@ -265,8 +268,9 @@ Para orientar dónde va cada figura en el argumento del documento:
   el mejor de los tres (dosificador exacto).
 - **Germinación, Neodimio N 3 mL** (n=81): **+6.2 puntos porcentuales**,
   IC95 [−2.0, +14.5], p=0.14. Sin tendencia dosis-respuesta (p=0.23). Ningún
-  nivel sobrevive Holm; el más alto es el nivel 6 (22 mT, crudo 0.01, Holm
-  0.06) mientras el nivel 1 (263 mT) queda **por debajo** del control.
+  nivel sobrevive Holm; el más alto es el nivel 6 (22 mT, crudo 0.022, Holm
+  0.178) mientras el nivel 1 (263 mT) queda **por debajo** del control. Estos
+  contrastes, como el análisis principal, están ajustados por bloque.
 - **Radícula, Neodimio N 3 mL** (n=77): **+0.60 mm (+9.3%)**, IC95 [−9.2%,
   +27.8%], p=0.32. Efecto mínimo detectable 26.4% (endpoint de baja potencia).
 - **Interacción agua × campo** (n=162): el efecto del imán **no difiere** entre
@@ -290,7 +294,8 @@ evidencia" y "evidencia de ausencia".
 
 Observación menor, **no es un hallazgo**: el nivel 3 (77 mT) aparece como el más
 alto en radícula (p=0.012 crudo, pero **Holm=0.09**, no sobrevive la corrección
-por multiplicidad). En germinación el más alto es el nivel 6 (Holm 0.06). Mencionable como
+por multiplicidad). En germinación el más alto es el nivel 6 (p=0.022 crudo,
+**Holm=0.178**). Mencionable como
 hipótesis a testear, nunca como resultado.
 
 ---
